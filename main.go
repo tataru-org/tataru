@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -11,6 +12,17 @@ import (
 	"github.com/disgoorg/disgo/events"
 	"github.com/disgoorg/disgo/gateway"
 	"github.com/disgoorg/log"
+	"golang.org/x/oauth2/google"
+)
+
+const (
+	gscope       = "https://www.googleapis.com/auth/drive"
+	fileMimeType = "application/vnd.google-apps.spreadsheet"
+)
+
+var (
+	gclient *http.Client
+	ctx     context.Context
 )
 
 func onReadyHandler(event *events.Ready) {
@@ -29,6 +41,17 @@ func main() {
 	discordToken := ""
 	log.SetLevel(log.LevelDebug)
 
+	ctx = context.Background()
+	b, err := os.ReadFile("svc-creds.json")
+	if err != nil {
+		panic(err)
+	}
+	gconfig, err := google.JWTConfigFromJSON(b, gscope)
+	if err != nil {
+		panic(err)
+	}
+	gclient = gconfig.Client(ctx)
+
 	client, err := disgo.New(
 		discordToken,
 		bot.WithGatewayConfigOpts(
@@ -43,12 +66,12 @@ func main() {
 		bot.WithEventListenerFunc(onGuildReady),
 	)
 	if err != nil {
-		log.Fatal("error while building bot instance: ", err)
+		panic(err)
 	}
 	defer client.Close(context.TODO())
 
 	if err = client.OpenGateway(context.TODO()); err != nil {
-		log.Fatal("error while connecting to gateway: ", err)
+		panic(err)
 	}
 
 	s := make(chan os.Signal, 1)
