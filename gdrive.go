@@ -1,49 +1,49 @@
 package main
 
 import (
-	"github.com/disgoorg/log"
 	"google.golang.org/api/drive/v3"
-	"google.golang.org/api/option"
 )
 
-func fileExists(fileid string) bool {
-	svc, err := drive.NewService(ctx, option.WithHTTPClient(gclient))
-	if err != nil {
-		log.Error(err)
-	}
+const fileMimeType = "application/vnd.google-apps.spreadsheet"
 
-	f, err := svc.Files.Get(fileid).Do()
-	return f != nil && err != nil
+type FileID string
+type SheetID int64
+type PermissionID string
+
+func fileExists(fileId FileID) (*bool, error) {
+	f, err := gdriveSvc.Files.Get(string(fileId)).Do()
+	exists := f != nil && err != nil
+	return &exists, nil
 }
 
-func makeFile(title string) string {
-	svc, err := drive.NewService(ctx, option.WithHTTPClient(gclient))
-	if err != nil {
-		log.Error(err)
-	}
-
+func createFile(title string) (*FileID, error) {
 	file := &drive.File{
 		MimeType:        fileMimeType,
 		Name:            title,
 		WritersCanShare: true,
 	}
-	f, err := svc.Files.Create(file).Do()
+	f, err := gdriveSvc.Files.Create(file).Do()
 	if err != nil {
-		log.Error(err)
+		return nil, err
 	}
-	return f.Id
+	fid := FileID(f.Id)
+	return &fid, err
 }
 
 // Type, Role, and EmailAddress are required properties for perm
-func addFilePermmission(fileid string, perm *drive.Permission) string {
-	svc, err := drive.NewService(ctx, option.WithHTTPClient(gclient))
+func addFilePermmission(fileId FileID, perm *drive.Permission) (*PermissionID, error) {
+	p, err := gdriveSvc.Permissions.Create(string(fileId), perm).Do()
 	if err != nil {
-		log.Error(err)
+		return nil, err
 	}
+	pid := PermissionID(p.Id)
+	return &pid, err
+}
 
-	p, err := svc.Permissions.Create(fileid, perm).Do()
+func removeFilePermission(fileId FileID, permId PermissionID) error {
+	err := gdriveSvc.Permissions.Delete(string(fileId), string(permId)).Do()
 	if err != nil {
-		log.Error(err)
+		return err
 	}
-	return p.Id
+	return nil
 }

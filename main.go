@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
-	"net/http"
+	"flag"
+	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/disgoorg/disgo"
@@ -12,48 +14,104 @@ import (
 	"github.com/disgoorg/disgo/events"
 	"github.com/disgoorg/disgo/gateway"
 	"github.com/disgoorg/log"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/oauth2/google"
+	"google.golang.org/api/drive/v3"
+	"google.golang.org/api/option"
+	"google.golang.org/api/sheets/v4"
 )
 
-const (
-	gscope       = "https://www.googleapis.com/auth/drive"
-	fileMimeType = "application/vnd.google-apps.spreadsheet"
-)
+const gscope = "https://www.googleapis.com/auth/drive"
 
 var (
-	gclient *http.Client
-	ctx     context.Context
+	gdriveSvc  *drive.Service
+	gsheetsSvc *sheets.Service
+	ctx        context.Context
+	dbpool     *pgxpool.Pool
+	botConfig  *Config
 )
 
 func onReadyHandler(event *events.Ready) {
 	log.Debug("bot is ready")
 }
 
-func onGuildReady(event *events.GuildReady) {
-	client := event.Client()
-	_, err := client.Rest().GetMembers(event.GuildID)
+func main() {
+	var discConfigFilepath string
+	flag.StringVar(&discConfigFilepath, "discord-config", "", "filepath to the discord configuration file")
+	flag.Parse()
+
+	absDiscConfigFilepath, err := filepath.Abs(discConfigFilepath)
 	if err != nil {
 		log.Fatal(err)
+		panic(err)
 	}
-}
-
-func main() {
-	discordToken := ""
-	log.SetLevel(log.LevelDebug)
-
-	ctx = context.Background()
-	b, err := os.ReadFile("svc-creds.json")
+	botConfig, err = NewConfig(absDiscConfigFilepath)
 	if err != nil {
+		log.Fatal(err)
+		panic(err)
+	}
+	log.Debug("parsed bot config file")
+	absGapiConfigFilepath, err := filepath.Abs(botConfig.GoogleApiConfigRelativeFilepath)
+	if err != nil {
+		log.Fatal(err)
+		panic(err)
+	}
+	log.SetLevel(log.Level(botConfig.LogLevel))
+	ctx = context.Background()
+
+	// init db pool
+	dbpool, err = pgxpool.New(
+		ctx,
+		fmt.Sprintf(
+			"postgres://%s:%s@%s:%s/%s",
+			botConfig.DBUsername,
+			botConfig.DBUserPassword,
+			botConfig.DBIP,
+			botConfig.DBPort,
+			botConfig.DBName,
+		),
+	)
+	if err != nil {
+		log.Fatal(err)
+		panic(err)
+	}
+	defer dbpool.Close()
+	// ensure no issues with acquiring db connections
+	_, err = dbpool.Acquire(ctx)
+	if err != nil {
+		log.Fatal(err)
+		panic(err)
+	}
+	log.Debug("db pool initialized")
+
+	// init google api client
+	b, err := os.ReadFile(absGapiConfigFilepath)
+	if err != nil {
+		log.Fatal(err)
 		panic(err)
 	}
 	gconfig, err := google.JWTConfigFromJSON(b, gscope)
 	if err != nil {
+		log.Fatal(err)
 		panic(err)
 	}
-	gclient = gconfig.Client(ctx)
+	gclient := gconfig.Client(ctx)
+	log.Debug("google client initialized")
+	gdriveSvc, err = drive.NewService(ctx, option.WithHTTPClient(gclient))
+	if err != nil {
+		log.Fatal(err)
+		panic(err)
+	}
+	log.Debug("google drive service initialized")
+	gsheetsSvc, err = sheets.NewService(ctx, option.WithHTTPClient(gclient))
+	if err != nil {
+		panic(err)
+	}
+	log.Debug("google sheets service initialized")
 
+	// init discord client
 	client, err := disgo.New(
-		discordToken,
+		botConfig.DiscordToken,
 		bot.WithGatewayConfigOpts(
 			gateway.WithIntents(
 				gateway.IntentGuilds,
@@ -66,13 +124,16 @@ func main() {
 		bot.WithEventListenerFunc(onGuildReady),
 	)
 	if err != nil {
+		log.Fatal(err)
 		panic(err)
 	}
 	defer client.Close(context.TODO())
 
 	if err = client.OpenGateway(context.TODO()); err != nil {
+		log.Fatal(err)
 		panic(err)
 	}
+	log.Debug("bot initialized")
 
 	s := make(chan os.Signal, 1)
 	signal.Notify(s, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)

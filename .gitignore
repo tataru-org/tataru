@@ -5,4 +5,4 @@
 !go.mod
 
 !*.go
-main-google.go
+main-test.go
