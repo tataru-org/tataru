@@ -376,7 +376,7 @@ func onGuildReady(event *events.GuildReady) {
 			log.Debug("file built")
 		}
 	} else {
-		err := fmt.Errorf("multiple files exist")
+		err := fmt.Errorf("multiple file refs exist in database")
 		log.Fatal(err)
 		panic(err)
 	}
