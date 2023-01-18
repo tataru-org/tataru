@@ -172,7 +172,7 @@ func buildFile(countIsGreaterThan0 bool) {
 		select
 			user_id,
 			user_name
-		from schema.table
+		from bot.users
 		order by user_name
 	`
 	rows, err := dbcon.Query(
@@ -293,69 +293,67 @@ func buildFile(countIsGreaterThan0 bool) {
 	queryBatch := &pgx.Batch{}
 	if countIsGreaterThan0 {
 		// truncate file id table
-		queryBatch.Queue(`truncate table schema.table`)
-		// truncate sheet id table
-		queryBatch.Queue(`truncate table schema.table`)
+		queryBatch.Queue(`truncate table bot.file_ref`)
 	}
 	// put file id into db
-	queryBatch.Queue(`insert into schema.table(file_id=$1)`, fileID)
+	queryBatch.Queue(`insert into bot.file_ref(file_id=$1)`, fileID)
 	// put perm ids into db
 	for i := 0; i < len(permIDs); i++ {
-		queryBatch.Queue(`insert into schema.table(file_id=$1,permission_id=$2)`, fileID, permIDs[i])
+		queryBatch.Queue(`insert into bot.permissions(file_id=$1,permission_id=$2)`, fileID, permIDs[i])
 	}
 	// put sheet IDs into db
 	for exp, sheetID := range sheetMap {
 		sheetIDStr := strconv.FormatInt(int64(sheetID), 10)
-		queryBatch.Queue(`insert into schema.table(file_id=$1,expansion=$2,sheet_id=$3)`, fileID, int(exp), sheetIDStr)
+		queryBatch.Queue(`insert into bot.sheets(file_id=$1,expansion=$2,sheet_id=$3)`, fileID, int(exp), sheetIDStr)
 	}
-	_ = dbcon.SendBatch(ctx, queryBatch)
+	dbcon.SendBatch(ctx, queryBatch)
 	log.Debug("required data saved to db")
 }
 
 func onGuildReady(event *events.GuildReady) {
-	client := event.Client()
-
-	// check if db has a record of the file
 	dbcon, err := dbpool.Acquire(ctx)
 	if err != nil {
 		log.Fatal(err)
 		panic(err)
 	}
 	defer dbcon.Conn().Close(ctx)
+	isValidDb, err := isValidDatabase(dbcon)
+	if err != nil {
+		log.Fatal(err)
+		panic(err)
+	}
+	if isValidDb {
+		log.Debug("schema is valid")
+	} else {
+		log.Debug("schema is invalid")
+		initSchema(dbcon)
+		log.Debug("schema initialized")
+	}
 
-	var countStr string
+	// check if db has a record of the file
+	var fileRefExists bool
 	row := dbcon.QueryRow(
 		ctx,
-		"select count(*) from schema.table",
+		"select exists(select file_id from bot.file_ref)",
 	)
-	err = row.Scan(&countStr)
-	if err != nil {
-		log.Fatal(err)
-		panic(err)
-	}
-	count, err := strconv.ParseInt(countStr, 10, 64)
+	err = row.Scan(&fileRefExists)
 	if err != nil {
 		log.Fatal(err)
 		panic(err)
 	}
 
-	members, err := client.Rest().GetMembers(event.GuildID)
+	members, err := event.Client().Rest().GetMembers(event.GuildID)
 	if err != nil {
 		log.Fatal(err)
 		panic(err)
 	}
 
-	if count == 0 {
-		// create the file
-		log.Debug("file does not exist in db on startup")
-		buildFile(false)
-		log.Debug("file built")
-	} else if count == 1 {
-		// check if the file exists
+	if fileRefExists {
+		// check if the file exists in google drive
 		var fileID string
 		row := dbcon.QueryRow(
 			ctx,
-			"select file_id from schema.table",
+			"select file_id from bot.file_ref",
 		)
 		err = row.Scan(&fileID)
 		if err != nil {
@@ -376,9 +374,10 @@ func onGuildReady(event *events.GuildReady) {
 			log.Debug("file built")
 		}
 	} else {
-		err := fmt.Errorf("multiple file refs exist in database")
-		log.Fatal(err)
-		panic(err)
+		// create the file
+		log.Debug("file does not exist in db on startup")
+		buildFile(false)
+		log.Debug("file built")
 	}
 	fmt.Println(members)
 }
