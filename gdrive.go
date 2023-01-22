@@ -12,7 +12,10 @@ type PermissionID string
 
 func fileExists(fileId FileID) (*bool, error) {
 	f, err := gdriveSvc.Files.Get(string(fileId)).Do()
-	exists := f != nil && err != nil
+	if err != nil {
+		return nil, err
+	}
+	exists := f != nil
 	return &exists, nil
 }
 

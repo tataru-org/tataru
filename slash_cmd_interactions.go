@@ -108,6 +108,7 @@ func unsetRoleHandler(event *events.ApplicationCommandInteractionCreate) {
 		if err != nil {
 			log.Fatal(err)
 			log.Fatal(debug.Stack())
+			return
 		}
 	} else {
 		err = event.CreateMessage(

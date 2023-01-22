@@ -35,9 +35,9 @@ func initSchema(dbcon *pgxpool.Conn) []error {
 		)
 	`)
 	b.Queue(`
-		create table if not exists bot.users (
-			user_id varchar(128) primary key not null,
-			user_name varchar(128) not null
+		create table if not exists bot.members (
+			member_id varchar(128) primary key not null,
+			member_name varchar(128) not null
 		)
 	`)
 	b.Queue(`
@@ -73,19 +73,19 @@ func isValidDatabase(dbcon *pgxpool.Conn) (bool, error) {
 	return schemaExists, nil
 }
 
-type UserID string
-type User struct {
-	id   UserID
+type MemberID string
+type Member struct {
+	id   MemberID
 	name string
 }
 
-func getUsersFromDB(dbcon *pgxpool.Conn) ([]*User, error) {
+func getMembersFromDB(dbcon *pgxpool.Conn) ([]*Member, error) {
 	query := `
 		select
-			user_id,
-			user_name
-		from bot.users
-		order by user_name
+			member_id,
+			member_name
+		from bot.members
+		order by member_name
 	`
 	rows, err := dbcon.Query(
 		ctx,
@@ -95,18 +95,18 @@ func getUsersFromDB(dbcon *pgxpool.Conn) ([]*User, error) {
 		return nil, err
 	}
 
-	users := []*User{}
+	members := []*Member{}
 	for rows.Next() {
-		var userID string
-		var username string
-		err = rows.Scan(&userID, &username)
+		var memberID string
+		var membername string
+		err = rows.Scan(&memberID, &membername)
 		if err != nil {
 			return nil, err
 		}
-		users = append(users, &User{
-			id:   UserID(userID),
-			name: username,
+		members = append(members, &Member{
+			id:   MemberID(memberID),
+			name: membername,
 		})
 	}
-	return users, nil
+	return members, nil
 }

@@ -49,44 +49,58 @@ func onGuildReady(event *events.GuildReady) {
 		return
 	}
 
+	var fileID *FileID
 	if fileRefExists {
+		var fileIDStr string
 		// check if the file exists in google drive
-		var fileID string
 		row := dbcon.QueryRow(
 			ctx,
 			"select file_id from bot.file_ref",
 		)
-		err = row.Scan(&fileID)
+		err = row.Scan(&fileIDStr)
 		if err != nil {
 			log.Fatal(err)
 			log.Fatal(debug.Stack())
 			return
 		}
-		ok, err := fileExists(FileID(fileID))
+		exists, err := fileExists(FileID(fileIDStr))
 		if err != nil {
 			log.Fatal(err)
 			log.Fatal(debug.Stack())
 			return
 		}
-		if *ok {
-			// check if the file needs to be updated
-			members, err := event.Client().Rest().GetMembers(event.GuildID)
+		if !*exists {
+			// create the file
+			log.Debug("file exists in db on startup but does not exist in google drive")
+			fileID, err = buildFile(dbcon, false)
 			if err != nil {
 				log.Fatal(err)
 				log.Fatal(debug.Stack())
 				return
 			}
-			syncRoleMembers(FileID(fileID), members)
-		} else {
-			// create the file
-			log.Debug("file exists in db on startup but does not exist in google drive")
-			buildFile(true)
 			log.Debug("file built")
+		} else {
+			fileID = (*FileID)(&fileIDStr)
 		}
 	} else {
 		// create the file
 		log.Debug("file does not exist in db on startup")
-		buildFile(false)
+		fileID, err = buildFile(dbcon, false)
+		if err != nil {
+			log.Fatal(err)
+			log.Fatal(debug.Stack())
+			return
+		}
 		log.Debug("file built")
 	}
+
+	// check if the file needs to be updated
+	members, err := event.Client().Rest().GetMembers(event.GuildID)
+	if err != nil {
+		log.Fatal(err)
+		log.Fatal(debug.Stack())
+		return
+	}
+	syncRoleMembers(dbcon, *fileID, members)
+	log.Debug("sync successfully completed")
 }

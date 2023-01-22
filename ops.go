@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
 	"runtime/debug"
 	"strconv"
@@ -9,6 +10,7 @@ import (
 	"github.com/disgoorg/disgo/events"
 	"github.com/disgoorg/log"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/api/sheets/v4"
 )
 
@@ -26,41 +28,31 @@ func sendEventErrorResponse(event *events.ApplicationCommandInteractionCreate, e
 	}
 }
 
-func buildFile(badFileExists bool) {
+func buildFile(dbcon *pgxpool.Conn, badFileExists bool) (*FileID, error) {
 	fileID, err := createFile(botConfig.MountSpreadsheetFileName)
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
-		return
+		return nil, err
 	}
 	log.Debugf("file created: %s", *fileID)
 	columnMap, err := NewColumnMap(mountSpreadsheetColumnDataFilepath)
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
-		return
+		return nil, err
 	}
 	sheetNames, err := columnMap.GetSheetNames()
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
-		return
+		return nil, err
 	}
 
 	// add permissions to the file
 	perms, err := GetPermissions(mountSpreadsheetPermissionsFilepath)
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
-		return
+		return nil, err
 	}
 	permIDs := make([]PermissionID, len(perms))
 	for i := 0; i < len(perms); i++ {
 		pid, err := addFilePermmission(*fileID, perms[i])
 		if err != nil {
-			log.Fatal(err)
-			log.Fatal(debug.Stack())
-			return
+			return nil, err
 		}
 		permIDs[i] = *pid
 		log.Debugf(
@@ -74,9 +66,7 @@ func buildFile(badFileExists bool) {
 
 	spreadsheet, err := gsheetsSvc.Spreadsheets.Get(string(*fileID)).Do()
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
-		return
+		return nil, err
 	}
 	// create the sheets
 	numSheets := len(sheetNames)
@@ -105,9 +95,7 @@ func buildFile(badFileExists bool) {
 		Requests: requests,
 	}).Do()
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
-		return
+		return nil, err
 	}
 	log.Debug("sheets created")
 
@@ -138,18 +126,14 @@ func buildFile(badFileExists bool) {
 		},
 	}).Do()
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
-		return
+		return nil, err
 	}
 	log.Debug("default sheet deleted")
 
 	// map expansions to sheet IDs
 	spreadsheet, err = gsheetsSvc.Spreadsheets.Get(spreadsheet.SpreadsheetId).Do()
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
-		return
+		return nil, err
 	}
 	sheetMap := make(map[Expansion]SheetID, numSheets)
 	for i := 0; i < numSheets; i++ {
@@ -225,35 +209,24 @@ func buildFile(badFileExists bool) {
 		Requests: requests,
 	}).Do()
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
-		return
+		return nil, err
 	}
 	log.Debug("header rows and protected ranges added to each sheet")
 
-	// get users from db
-	dbcon, err := dbpool.Acquire(ctx)
+	// get members from db
+	members, err := getMembersFromDB(dbcon)
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
-		return
+		return nil, err
 	}
-	defer dbcon.Conn().Close(ctx)
-	users, err := getUsersFromDB(dbcon)
-	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
-		return
-	}
-	// add users to each sheet
+	// add members to each sheet
 	requests = []*sheets.Request{}
 	for sheetIndex, columnIndexMap := range columnMap.Mapping {
 		numColumns := len(columnIndexMap)
 		cellData := make([]*sheets.CellData, numColumns)
 		for columnIndex, columnData := range columnIndexMap {
-			for i := 0; i < len(users); i++ {
+			for i := 0; i < len(members); i++ {
 				if columnIndex == 0 {
-					uid := string(users[i].id)
+					uid := string(members[i].id)
 					cellData[columnIndex] = &sheets.CellData{
 						UserEnteredValue: &sheets.ExtendedValue{
 							StringValue: &uid,
@@ -263,7 +236,7 @@ func buildFile(badFileExists bool) {
 				} else if columnIndex == 1 {
 					cellData[columnIndex] = &sheets.CellData{
 						UserEnteredValue: &sheets.ExtendedValue{
-							StringValue: &users[i].name,
+							StringValue: &members[i].name,
 						},
 						UserEnteredFormat: columnData.ColumnFormat,
 					}
@@ -299,17 +272,15 @@ func buildFile(badFileExists bool) {
 		Requests: requests,
 	}).Do()
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
-		return
+		return nil, err
 	}
-	log.Debug("users added to each sheet")
+	log.Debug("members added to each sheet")
 
 	// save what is needed to the db
 	queryBatch := &pgx.Batch{}
 	if badFileExists {
-		// truncate file id table
-		queryBatch.Queue(`truncate table bot.file_ref`)
+		// delete data in file id table
+		queryBatch.Queue(`delete from bot.file_ref`)
 	}
 	// put file id into db
 	queryBatch.Queue(`insert into bot.file_ref(file_id) values($1)`, fileID)
@@ -327,28 +298,191 @@ func buildFile(badFileExists bool) {
 	for i := 0; i < queryBatch.Len(); i++ {
 		_, err = bresults.Exec()
 		if err != nil {
+			return nil, err
+		}
+	}
+	log.Debug("required data saved to db")
+	return fileID, nil
+}
+
+func syncRoleMembers(dbcon *pgxpool.Conn, id FileID, guildMembers []discord.Member) {
+	// get members from db
+	dbMembers, err := getMembersFromDB(dbcon)
+	if err != nil {
+		log.Fatal(err)
+		log.Fatal(debug.Stack())
+		return
+	}
+	// get the watched role id
+	var roleID string
+	row := dbcon.QueryRow(ctx, `select role_id from bot.role_ref`)
+	err = row.Scan(&roleID)
+	if err == sql.ErrNoRows {
+		// exit if role is not set
+		return
+	} else if err != nil {
+		log.Fatal(err)
+		log.Fatal(debug.Stack())
+		return
+	}
+
+	// filter out members without the watched role id
+	roleMembers := []discord.Member{}
+	for i := 0; i < len(guildMembers); i++ {
+		for j := 0; j < len(guildMembers[i].RoleIDs); j++ {
+			if guildMembers[i].RoleIDs[j].String() == roleID {
+				roleMembers[i] = guildMembers[i]
+				break
+			}
+		}
+	}
+
+	spreadsheet, err := gsheetsSvc.Spreadsheets.Get(string(id)).IncludeGridData(true).Do()
+	if err != nil {
+		log.Fatal(err)
+		log.Fatal(debug.Stack())
+		return
+	}
+	if len(dbMembers) == len(roleMembers) && len(dbMembers) == 0 {
+		return
+	}
+
+	// get the members to delete from the spreadsheet
+	deleteMembers := []*Member{}
+	filteredDBMembers := []*Member{}
+	for i := 0; i < len(dbMembers); i++ {
+		memberShouldExist := false
+		for j := 0; j < len(roleMembers); j++ {
+			if dbMembers[i].id == MemberID(roleMembers[j].User.ID.String()) {
+				memberShouldExist = true
+			}
+		}
+		if !memberShouldExist {
+			deleteMembers = append(deleteMembers, dbMembers[i])
+		} else {
+			filteredDBMembers = append(filteredDBMembers, dbMembers[i])
+		}
+	}
+	// map the row indices of each member to delete
+	deleteMemberMap := map[int64]*Member{}
+	testSheet := spreadsheet.Sheets[0]
+	numRows := len(testSheet.Data[0].RowData) - 1
+	for i := 0; i < len(deleteMembers); i++ {
+		for j := 0; j < numRows; j++ {
+			rowIndex := j + 1
+			row := testSheet.Data[0].RowData[rowIndex]
+			if MemberID(*row.Values[0].EffectiveValue.StringValue) == deleteMembers[i].id {
+				deleteMemberMap[int64(rowIndex)] = deleteMembers[i]
+			}
+		}
+	}
+	// delete the members' rows in the spreadsheet
+	requests := make([]*sheets.Request, len(deleteMemberMap)*len(spreadsheet.Sheets))
+	requestIndex := 0
+	for i := 0; i < len(spreadsheet.Sheets); i++ {
+		for rowIndex, member := range deleteMemberMap {
+			requests[requestIndex] = &sheets.Request{
+				DeleteRange: &sheets.DeleteRangeRequest{
+					Range: &sheets.GridRange{
+						StartRowIndex: rowIndex,
+						EndRowIndex:   rowIndex,
+						SheetId:       spreadsheet.Sheets[i].Properties.SheetId,
+					},
+					ShiftDimension: "ROWS",
+				},
+			}
+			log.Debugf("member %s (id:%s) queued to be deleted from spreadsheet", member.name, string(member.id))
+			requestIndex++
+		}
+	}
+	_, err = gsheetsSvc.Spreadsheets.BatchUpdate(spreadsheet.SpreadsheetId, &sheets.BatchUpdateSpreadsheetRequest{
+		Requests: requests,
+	}).Do()
+	if err != nil {
+		log.Fatal(err)
+		log.Fatal(debug.Stack())
+		return
+	}
+	log.Debug("members deleted from spreadsheet")
+
+	// delete members from the db
+	qBatch := &pgx.Batch{}
+	for i := 0; i < len(deleteMembers); i++ {
+		qBatch.Queue(`delete from bot.members where member_id=$1`, string(deleteMembers[i].id))
+	}
+	bresults := dbcon.SendBatch(ctx, qBatch)
+	for i := 0; i < qBatch.Len(); i++ {
+		_, err = bresults.Exec()
+		if err != nil {
 			log.Fatal(err)
 			log.Fatal(debug.Stack())
 			return
 		}
 	}
-	log.Debug("required data saved to db")
-}
+	log.Debug("members deleted from db")
 
-func syncRoleMembers(id FileID, guildMembers []discord.Member) {
-	// get users from db
-	dbcon, err := dbpool.Acquire(ctx)
+	spreadsheet, err = gsheetsSvc.Spreadsheets.Get(string(id)).IncludeGridData(true).Do()
 	if err != nil {
 		log.Fatal(err)
 		log.Fatal(debug.Stack())
 		return
 	}
-	defer dbcon.Conn().Close(ctx)
-	// TODO
-	_, err = getUsersFromDB(dbcon)
+	if len(filteredDBMembers) == len(roleMembers) && len(filteredDBMembers) == 0 {
+		return
+	}
+
+	// get the members to add to the spreadsheet
+	addMembers := []discord.Member{}
+	for i := 0; i < len(roleMembers); i++ {
+		memberAlreadyExists := false
+		for j := 0; j < len(filteredDBMembers); j++ {
+			if filteredDBMembers[j].id == MemberID(roleMembers[i].User.ID.String()) {
+				memberAlreadyExists = true
+			}
+		}
+		if !memberAlreadyExists {
+			addMembers = append(addMembers, roleMembers[i])
+		}
+	}
+	// map the row indices of each member to add
+	testSheet = spreadsheet.Sheets[0]
+	numRows = len(testSheet.Data[0].RowData) - 1
+	addMemberMap := map[int64]discord.Member{}
+	for i := 0; i < len(addMembers); i++ {
+		for j := 0; j < numRows; j++ {
+			rowIndex := j + 1
+			row := testSheet.Data[0].RowData[rowIndex]
+			if *row.Values[0].EffectiveValue.StringValue == addMembers[i].User.ID.String() {
+				addMemberMap[int64(rowIndex)] = addMembers[i]
+			}
+		}
+	}
+	// add the members' rows in the spreadsheet
+	requests = make([]*sheets.Request, len(addMemberMap)*len(spreadsheet.Sheets))
+	requestIndex = 0
+	for i := 0; i < len(spreadsheet.Sheets); i++ {
+		for rowIndex, member := range addMemberMap {
+			requests[requestIndex] = &sheets.Request{
+				InsertRange: &sheets.InsertRangeRequest{
+					Range: &sheets.GridRange{
+						StartRowIndex: rowIndex,
+						EndRowIndex:   rowIndex,
+						SheetId:       spreadsheet.Sheets[i].Properties.SheetId,
+					},
+					ShiftDimension: "ROWS",
+				},
+			}
+			log.Debugf("member %s (id:%s) queued to be added to spreadsheet", *member.Nick, member.User.ID.String())
+			requestIndex++
+		}
+	}
+	_, err = gsheetsSvc.Spreadsheets.BatchUpdate(spreadsheet.SpreadsheetId, &sheets.BatchUpdateSpreadsheetRequest{
+		Requests: requests,
+	}).Do()
 	if err != nil {
 		log.Fatal(err)
 		log.Fatal(debug.Stack())
 		return
 	}
+	log.Debug("members added to spreadsheet")
 }
