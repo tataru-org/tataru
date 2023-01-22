@@ -6,4 +6,3 @@
 !Dockerfile
 
 !*.go
-main-test.go
