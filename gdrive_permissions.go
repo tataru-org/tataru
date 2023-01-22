@@ -1,10 +1,8 @@
 package main
 
 import (
-	"encoding/csv"
-	"fmt"
-	"io"
-	"os"
+	"encoding/json"
+	"io/ioutil"
 	"regexp"
 
 	"google.golang.org/api/drive/v3"
@@ -16,39 +14,14 @@ func isGmailEmailAddress(email string) bool {
 }
 
 func GetPermissions(mountSpreadsheetPermissionsFilepath string) ([]*drive.Permission, error) {
-	file, err := os.Open(mountSpreadsheetPermissionsFilepath)
+	rawJson, err := ioutil.ReadFile(mountSpreadsheetPermissionsFilepath)
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
-
-	reader := csv.NewReader(file)
-	// skip header row
-	_, err = reader.Read()
+	var perms []*drive.Permission
+	err = json.Unmarshal(rawJson, &perms)
 	if err != nil {
 		return nil, err
-	}
-
-	perms := []*drive.Permission{}
-	for {
-		row, err := reader.Read()
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return nil, err
-		}
-		email := row[0]
-		if !isGmailEmailAddress(email) {
-			return nil, fmt.Errorf("%s is not a valid gmail address", email)
-		}
-		permType := row[1]
-		role := row[2]
-		perms = append(perms, &drive.Permission{
-			Type:         permType,
-			Role:         role,
-			EmailAddress: email,
-		})
 	}
 	return perms, nil
 }

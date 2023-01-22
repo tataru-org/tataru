@@ -2,11 +2,10 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
 	"os/signal"
-	"path/filepath"
+	"runtime/debug"
 	"syscall"
 
 	"github.com/disgoorg/disgo"
@@ -21,7 +20,13 @@ import (
 	"google.golang.org/api/sheets/v4"
 )
 
-const gscope = "https://www.googleapis.com/auth/drive"
+const (
+	gscope                              = "https://www.googleapis.com/auth/drive"
+	discordConfigFilepath               = "/app/config.json"
+	mountSpreadsheetPermissionsFilepath = "/app/file-permissions.json"
+	mountSpreadsheetColumnDataFilepath  = "/app/column-data.csv"
+	googleApiConfigRelativeFilepath     = "/app/svc-creds.json"
+)
 
 var (
 	gdriveSvc  *drive.Service
@@ -36,26 +41,17 @@ func onReadyHandler(event *events.Ready) {
 }
 
 func main() {
-	var discConfigFilepath string
-	flag.StringVar(&discConfigFilepath, "discord-config", "", "filepath to the discord configuration file")
-	flag.Parse()
-
-	absDiscConfigFilepath, err := filepath.Abs(discConfigFilepath)
+	defer func() {
+		log.Debug(debug.Stack())
+	}()
+	var err error
+	botConfig, err = NewConfig(discordConfigFilepath)
 	if err != nil {
 		log.Fatal(err)
-		panic(err)
-	}
-	botConfig, err = NewConfig(absDiscConfigFilepath)
-	if err != nil {
-		log.Fatal(err)
-		panic(err)
+		log.Fatal(string(debug.Stack()))
+		return
 	}
 	log.Debug("parsed bot config file")
-	absGapiConfigFilepath, err := filepath.Abs(botConfig.GoogleApiConfigRelativeFilepath)
-	if err != nil {
-		log.Fatal(err)
-		panic(err)
-	}
 	log.SetLevel(log.Level(botConfig.LogLevel))
 	ctx = context.Background()
 
@@ -73,39 +69,44 @@ func main() {
 	)
 	if err != nil {
 		log.Fatal(err)
-		panic(err)
+		log.Fatal(string(debug.Stack()))
+		return
 	}
 	defer dbpool.Close()
 	// ensure no issues with acquiring db connections
 	_, err = dbpool.Acquire(ctx)
 	if err != nil {
 		log.Fatal(err)
-		panic(err)
+		log.Fatal(string(debug.Stack()))
+		return
 	}
 	log.Debug("db pool initialized")
 
 	// init google api client
-	b, err := os.ReadFile(absGapiConfigFilepath)
+	b, err := os.ReadFile(googleApiConfigRelativeFilepath)
 	if err != nil {
 		log.Fatal(err)
-		panic(err)
+		log.Fatal(string(debug.Stack()))
+		return
 	}
 	gconfig, err := google.JWTConfigFromJSON(b, gscope)
 	if err != nil {
 		log.Fatal(err)
-		panic(err)
+		log.Fatal(string(debug.Stack()))
+		return
 	}
 	gclient := gconfig.Client(ctx)
 	log.Debug("google client initialized")
 	gdriveSvc, err = drive.NewService(ctx, option.WithHTTPClient(gclient))
 	if err != nil {
 		log.Fatal(err)
-		panic(err)
+		log.Fatal(string(debug.Stack()))
+		return
 	}
 	log.Debug("google drive service initialized")
 	gsheetsSvc, err = sheets.NewService(ctx, option.WithHTTPClient(gclient))
 	if err != nil {
-		panic(err)
+		return
 	}
 	log.Debug("google sheets service initialized")
 
@@ -125,13 +126,15 @@ func main() {
 	)
 	if err != nil {
 		log.Fatal(err)
-		panic(err)
+		log.Fatal(string(debug.Stack()))
+		return
 	}
 	defer client.Close(context.TODO())
 
 	if err = client.OpenGateway(context.TODO()); err != nil {
 		log.Fatal(err)
-		panic(err)
+		log.Fatal(string(debug.Stack()))
+		return
 	}
 	log.Debug("bot initialized")
 

@@ -5,7 +5,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func initSchema(dbcon *pgxpool.Conn) {
+func initSchema(dbcon *pgxpool.Conn) []error {
 	b := &pgx.Batch{}
 	b.Queue(`create schema bot`)
 	b.Queue(`
@@ -15,13 +15,8 @@ func initSchema(dbcon *pgxpool.Conn) {
 	`)
 	b.Queue(`
 		create table if not exists bot.users (
-			file_id varchar(128) not null,
 			user_id varchar(128) primary key not null,
-			user_name varchar(128) not null,
-			constraint fk_file_ref
-				foreign key (file_id)
-					references bot.file_ref(file_id)
-					on delete cascade
+			user_name varchar(128) not null
 		)
 	`)
 	b.Queue(`
@@ -45,7 +40,13 @@ func initSchema(dbcon *pgxpool.Conn) {
 				on delete cascade
 		)
 	`)
-	dbcon.SendBatch(ctx, b)
+
+	bresults := dbcon.SendBatch(ctx, b)
+	errs := make([]error, b.Len())
+	for i := 0; i < b.Len(); i++ {
+		_, errs[i] = bresults.Exec()
+	}
+	return errs
 }
 
 func isValidDatabase(dbcon *pgxpool.Conn) (bool, error) {

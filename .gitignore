@@ -3,6 +3,7 @@
 !.gitignore
 !go.sum
 !go.mod
+!Dockerfile
 
 !*.go
 main-test.go

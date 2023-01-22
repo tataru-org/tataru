@@ -88,6 +88,26 @@ func ExpansionNameToExpansion(expName ExpansionName) (Expansion, error) {
 	}
 }
 
+func getExpansions() []Expansion {
+	return []Expansion{
+		ExpansionARR,
+		ExpansionHW,
+		ExpansionSTB,
+		ExpansionSHB,
+		ExpansionEW,
+	}
+}
+
+func getExpansionNames() []ExpansionName {
+	return []ExpansionName{
+		ExpansionNameARR,
+		ExpansionNameHW,
+		ExpansionNameSTB,
+		ExpansionNameSHB,
+		ExpansionNameEW,
+	}
+}
+
 const (
 	NumberOfExpansions int = 5
 )
@@ -120,7 +140,8 @@ func NewColumnMap(headerDataFilepath string) (*ColumnMap, error) {
 		return nil, err
 	}
 
-	mapping := &ColumnMap{Mapping: make(map[SheetIndex]map[ColumnIndex]*ColumnData)}
+	innerMap := map[SheetIndex]map[ColumnIndex]*ColumnData{}
+	columnDataMaps := make([]map[ColumnIndex]*ColumnData, NumberOfExpansions)
 	// read everything else
 	for {
 		row, err := reader.Read()
@@ -141,19 +162,19 @@ func NewColumnMap(headerDataFilepath string) (*ColumnMap, error) {
 		}
 		headerBackgroundHex := row[3]
 		if !isHex(headerBackgroundHex) {
-			return nil, fmt.Errorf("%s it not a valid header background hex color for %s", headerBackgroundHex, bossName)
+			return nil, fmt.Errorf("%s is not a valid header background hex color for %s", headerBackgroundHex, bossName)
 		}
 		headerForegroundHex := row[4]
 		if !isHex(headerForegroundHex) {
-			return nil, fmt.Errorf("%s it not a valid header foreground hex color for %s", headerForegroundHex, bossName)
+			return nil, fmt.Errorf("%s is not a valid header foreground hex color for %s", headerForegroundHex, bossName)
 		}
 		checkboxBackgroundHex := row[5]
 		if !isHex(checkboxBackgroundHex) {
-			return nil, fmt.Errorf("%s it not a valid checkbox background hex color for %s", checkboxBackgroundHex, bossName)
+			return nil, fmt.Errorf("%s is not a valid checkbox background hex color for %s", checkboxBackgroundHex, bossName)
 		}
 		checkboxForegroundHex := row[6]
 		if !isHex(checkboxForegroundHex) {
-			return nil, fmt.Errorf("%s it not a valid checkbox background hex color for %s", checkboxForegroundHex, bossName)
+			return nil, fmt.Errorf("%s is not a valid checkbox background hex color for %s", checkboxForegroundHex, bossName)
 		}
 		headerBackgroundRgba, err := hex2rgba(headerBackgroundHex)
 		if err != nil {
@@ -193,12 +214,25 @@ func NewColumnMap(headerDataFilepath string) (*ColumnMap, error) {
 				RgbColor: checkboxBackgroundRgba.ToGoogleSheetsColor(),
 			},
 		}
-		mapping.Mapping[SheetIndex(expansion)][ColumnIndex(columnIndexAfterCommonIndices)+2] = &ColumnData{
+
+		oldCdataMap := columnDataMaps[expansion]
+		cdata := &ColumnData{
 			Name:         ColumnName(bossName),
 			HeaderFormat: headerCellFormat,
 			ColumnFormat: columnFormat,
 		}
+		cindex := ColumnIndex(columnIndexAfterCommonIndices + 2)
+		if oldCdataMap == nil {
+			columnDataMaps[expansion] = make(map[ColumnIndex]*ColumnData)
+			columnDataMaps[expansion][cindex] = cdata
+		} else {
+			oldCdataMap[ColumnIndex(cindex)] = cdata
+			columnDataMaps[expansion] = oldCdataMap
+		}
+
+		innerMap[SheetIndex(expansion)] = columnDataMaps[expansion]
 	}
+	mapping := &ColumnMap{Mapping: innerMap}
 
 	headerBackgroundHex := "#d9d9d9"
 	headerBackgroundRgba, err := hex2rgba(headerBackgroundHex)
