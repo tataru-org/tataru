@@ -110,6 +110,7 @@ func main() {
 	// init discord client
 	client, err := disgo.New(
 		botConfig.DiscordToken,
+		bot.WithDefaultGateway(),
 		bot.WithGatewayConfigOpts(
 			gateway.WithIntents(
 				gateway.IntentGuilds,
@@ -120,6 +121,8 @@ func main() {
 		),
 		bot.WithEventListenerFunc(onReadyHandler),
 		bot.WithEventListenerFunc(onGuildReady),
+		bot.WithEventListenerFunc(setRoleHandler),
+		bot.WithEventListenerFunc(unsetRoleHandler),
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -127,6 +130,11 @@ func main() {
 		return
 	}
 	defer client.Close(context.TODO())
+
+	slashCmds := createSlashCommands()
+	if _, err = client.Rest().SetGlobalCommands(client.ApplicationID(), slashCmds); err != nil {
+		log.Fatal("error while registering commands: ", err)
+	}
 
 	if err = client.OpenGateway(context.TODO()); err != nil {
 		log.Fatal(err)

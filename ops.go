@@ -1,14 +1,30 @@
 package main
 
 import (
+	"fmt"
 	"runtime/debug"
 	"strconv"
 
 	"github.com/disgoorg/disgo/discord"
+	"github.com/disgoorg/disgo/events"
 	"github.com/disgoorg/log"
 	"github.com/jackc/pgx/v5"
 	"google.golang.org/api/sheets/v4"
 )
+
+func sendEventErrorResponse(event *events.ApplicationCommandInteractionCreate, err error) {
+	trace := string(debug.Stack())
+	e := event.CreateMessage(
+		discord.MessageCreate{
+			Content: fmt.Sprintf("Error while setting role; report this to one of the developers.\nerror: %s\nstack trace: %s", err.Error(), trace),
+			Flags:   discord.MessageFlagEphemeral,
+		},
+	)
+	if e != nil {
+		log.Fatal(e)
+		log.Fatal(debug.Stack())
+	}
+}
 
 func buildFile(badFileExists bool) {
 	fileID, err := createFile(botConfig.MountSpreadsheetFileName)

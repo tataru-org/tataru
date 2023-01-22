@@ -25,7 +25,14 @@ func onGuildReady(event *events.GuildReady) {
 		log.Debug("schema is valid")
 	} else {
 		log.Debug("schema is invalid")
-		initSchema(dbcon)
+		errs := initSchema(dbcon)
+		for i := 0; i < len(errs); i++ {
+			if errs[i] != nil {
+				log.Fatal(err)
+				log.Fatal(debug.Stack())
+				return
+			}
+		}
 		log.Debug("schema initialized")
 	}
 

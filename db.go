@@ -14,12 +14,6 @@ func initSchema(dbcon *pgxpool.Conn) []error {
 		)
 	`)
 	b.Queue(`
-		create table if not exists bot.users (
-			user_id varchar(128) primary key not null,
-			user_name varchar(128) not null
-		)
-	`)
-	b.Queue(`
 		create table if not exists bot.permissions (
 			file_id varchar(128) not null,
 			perm_id varchar(128) primary key not null,
@@ -38,6 +32,17 @@ func initSchema(dbcon *pgxpool.Conn) []error {
 			foreign key (file_id)
 				references bot.file_ref(file_id)
 				on delete cascade
+		)
+	`)
+	b.Queue(`
+		create table if not exists bot.users (
+			user_id varchar(128) primary key not null,
+			user_name varchar(128) not null
+		)
+	`)
+	b.Queue(`
+		create table if not exists bot.role_ref (
+			role_id varchar(128) primary key not null
 		)
 	`)
 
