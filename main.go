@@ -41,14 +41,11 @@ func onReadyHandler(event *events.Ready) {
 }
 
 func main() {
-	defer func() {
-		log.Debug(debug.Stack())
-	}()
 	var err error
 	botConfig, err = NewConfig(discordConfigFilepath)
 	if err != nil {
 		log.Fatal(err)
-		log.Fatal(string(debug.Stack()))
+		log.Fatal(debug.Stack())
 		return
 	}
 	log.Debug("parsed bot config file")
@@ -69,7 +66,7 @@ func main() {
 	)
 	if err != nil {
 		log.Fatal(err)
-		log.Fatal(string(debug.Stack()))
+		log.Fatal(debug.Stack())
 		return
 	}
 	defer dbpool.Close()
@@ -77,7 +74,7 @@ func main() {
 	_, err = dbpool.Acquire(ctx)
 	if err != nil {
 		log.Fatal(err)
-		log.Fatal(string(debug.Stack()))
+		log.Fatal(debug.Stack())
 		return
 	}
 	log.Debug("db pool initialized")
@@ -86,13 +83,13 @@ func main() {
 	b, err := os.ReadFile(googleApiConfigRelativeFilepath)
 	if err != nil {
 		log.Fatal(err)
-		log.Fatal(string(debug.Stack()))
+		log.Fatal(debug.Stack())
 		return
 	}
 	gconfig, err := google.JWTConfigFromJSON(b, gscope)
 	if err != nil {
 		log.Fatal(err)
-		log.Fatal(string(debug.Stack()))
+		log.Fatal(debug.Stack())
 		return
 	}
 	gclient := gconfig.Client(ctx)
@@ -100,7 +97,7 @@ func main() {
 	gdriveSvc, err = drive.NewService(ctx, option.WithHTTPClient(gclient))
 	if err != nil {
 		log.Fatal(err)
-		log.Fatal(string(debug.Stack()))
+		log.Fatal(debug.Stack())
 		return
 	}
 	log.Debug("google drive service initialized")
@@ -126,14 +123,14 @@ func main() {
 	)
 	if err != nil {
 		log.Fatal(err)
-		log.Fatal(string(debug.Stack()))
+		log.Fatal(debug.Stack())
 		return
 	}
 	defer client.Close(context.TODO())
 
 	if err = client.OpenGateway(context.TODO()); err != nil {
 		log.Fatal(err)
-		log.Fatal(string(debug.Stack()))
+		log.Fatal(debug.Stack())
 		return
 	}
 	log.Debug("bot initialized")

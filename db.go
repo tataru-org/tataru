@@ -67,3 +67,41 @@ func isValidDatabase(dbcon *pgxpool.Conn) (bool, error) {
 	}
 	return schemaExists, nil
 }
+
+type UserID string
+type User struct {
+	id   UserID
+	name string
+}
+
+func getUsersFromDB(dbcon *pgxpool.Conn) ([]*User, error) {
+	query := `
+		select
+			user_id,
+			user_name
+		from bot.users
+		order by user_name
+	`
+	rows, err := dbcon.Query(
+		ctx,
+		query,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	users := []*User{}
+	for rows.Next() {
+		var userID string
+		var username string
+		err = rows.Scan(&userID, &username)
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, &User{
+			id:   UserID(userID),
+			name: username,
+		})
+	}
+	return users, nil
+}
