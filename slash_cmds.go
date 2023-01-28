@@ -25,5 +25,10 @@ func createSlashCommands() []discord.ApplicationCommandCreate {
 			Description:              "Unset the role to watch for the mount spreadsheet",
 			DefaultMemberPermissions: &adminPerm,
 		},
+		discord.SlashCommandCreate{
+			Name:                     "force_sync",
+			Description:              "Force sync the mount spreadsheet with discord",
+			DefaultMemberPermissions: &adminPerm,
+		},
 	}
 }

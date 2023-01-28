@@ -1,19 +1,28 @@
 package main
 
-import (
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
-)
-
-func initSchema(dbcon *pgxpool.Conn) []error {
-	b := &pgx.Batch{}
-	b.Queue(`create schema bot`)
-	b.Queue(`
+func initSchema() error {
+	dbcon, err := dbpool.Acquire(ctx)
+	if err != nil {
+		return err
+	}
+	defer dbcon.Release()
+	tx, err := dbcon.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `create schema bot`)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `
 		create table if not exists bot.file_ref (
 			file_id varchar(128) primary key not null
 		)
 	`)
-	b.Queue(`
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `
 		create table if not exists bot.permissions (
 			file_id varchar(128) not null,
 			perm_id varchar(128) primary key not null,
@@ -23,7 +32,10 @@ func initSchema(dbcon *pgxpool.Conn) []error {
 				on delete cascade
 		)
 	`)
-	b.Queue(`
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `
 		create table if not exists bot.sheets (
 			file_id varchar(128) not null,
 			sheet_id varchar(128) primary key not null,
@@ -34,27 +46,36 @@ func initSchema(dbcon *pgxpool.Conn) []error {
 				on delete cascade
 		)
 	`)
-	b.Queue(`
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `
 		create table if not exists bot.members (
 			member_id varchar(128) primary key not null,
 			member_name varchar(128) not null
 		)
 	`)
-	b.Queue(`
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `
 		create table if not exists bot.role_ref (
 			role_id varchar(128) primary key not null
 		)
 	`)
-
-	bresults := dbcon.SendBatch(ctx, b)
-	errs := make([]error, b.Len())
-	for i := 0; i < b.Len(); i++ {
-		_, errs[i] = bresults.Exec()
+	if err != nil {
+		return err
 	}
-	return errs
+	err = tx.Commit(ctx)
+	return err
 }
 
-func isValidDatabase(dbcon *pgxpool.Conn) (bool, error) {
+func isValidDatabase() (bool, error) {
+	dbcon, err := dbpool.Acquire(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer dbcon.Release()
 	row := dbcon.QueryRow(
 		ctx,
 		`
@@ -66,7 +87,7 @@ func isValidDatabase(dbcon *pgxpool.Conn) (bool, error) {
 		`,
 	)
 	var schemaExists bool
-	err := row.Scan(&schemaExists)
+	err = row.Scan(&schemaExists)
 	if err != nil {
 		return false, err
 	}
@@ -79,7 +100,12 @@ type Member struct {
 	name string
 }
 
-func getMembersFromDB(dbcon *pgxpool.Conn) ([]*Member, error) {
+func getMembersFromDB() ([]*Member, error) {
+	dbcon, err := dbpool.Acquire(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer dbcon.Release()
 	query := `
 		select
 			member_id,

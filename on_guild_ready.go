@@ -14,8 +14,8 @@ func onGuildReady(event *events.GuildReady) {
 		log.Fatal(debug.Stack())
 		return
 	}
-	defer dbcon.Conn().Close(ctx)
-	isValidDb, err := isValidDatabase(dbcon)
+	defer dbcon.Release()
+	isValidDb, err := isValidDatabase()
 	if err != nil {
 		log.Fatal(err)
 		log.Fatal(debug.Stack())
@@ -25,13 +25,11 @@ func onGuildReady(event *events.GuildReady) {
 		log.Debug("schema is valid")
 	} else {
 		log.Debug("schema is invalid")
-		errs := initSchema(dbcon)
-		for i := 0; i < len(errs); i++ {
-			if errs[i] != nil {
-				log.Fatal(err)
-				log.Fatal(debug.Stack())
-				return
-			}
+		err := initSchema()
+		if err != nil {
+			log.Fatal(err)
+			log.Fatal(debug.Stack())
+			return
 		}
 		log.Debug("schema initialized")
 	}
@@ -69,10 +67,11 @@ func onGuildReady(event *events.GuildReady) {
 			log.Fatal(debug.Stack())
 			return
 		}
+		dbcon.Release()
 		if !*exists {
 			// create the file
 			log.Debug("file exists in db on startup but does not exist in google drive")
-			fileID, err = buildFile(dbcon, false)
+			fileID, err = buildFile(false)
 			if err != nil {
 				log.Fatal(err)
 				log.Fatal(debug.Stack())
@@ -83,9 +82,10 @@ func onGuildReady(event *events.GuildReady) {
 			fileID = (*FileID)(&fileIDStr)
 		}
 	} else {
+		dbcon.Release()
 		// create the file
 		log.Debug("file does not exist in db on startup")
-		fileID, err = buildFile(dbcon, false)
+		fileID, err = buildFile(false)
 		if err != nil {
 			log.Fatal(err)
 			log.Fatal(debug.Stack())
@@ -95,12 +95,17 @@ func onGuildReady(event *events.GuildReady) {
 	}
 
 	// check if the file needs to be updated
-	members, err := event.Client().Rest().GetMembers(event.GuildID)
+	members, err := event.Client().Rest().GetMembers(event.GuildID, guildMemberCountRequestLimit, nullSnowflake)
 	if err != nil {
 		log.Fatal(err)
 		log.Fatal(debug.Stack())
 		return
 	}
-	syncRoleMembers(dbcon, *fileID, members)
+	err = syncRoleMembers(*fileID, members)
+	if err != nil {
+		log.Fatal(err)
+		log.Fatal(debug.Stack())
+		return
+	}
 	log.Debug("sync successfully completed")
 }

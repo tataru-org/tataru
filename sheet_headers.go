@@ -23,7 +23,7 @@ const (
 type ExpansionName string
 
 const (
-	ExpansionNameARR ExpansionName = "A Real Reborn"
+	ExpansionNameARR ExpansionName = "A Realm Reborn"
 	ExpansionNameHW  ExpansionName = "Heavensward"
 	ExpansionNameSTB ExpansionName = "Stormblood"
 	ExpansionNameSHB ExpansionName = "Shadowbringers"

@@ -22,7 +22,7 @@ func setRoleHandler(event *events.ApplicationCommandInteractionCreate) {
 		log.Fatal(debug.Stack())
 		return
 	}
-	defer dbcon.Conn().Close(ctx)
+	defer dbcon.Release()
 	row := dbcon.QueryRow(ctx, `select count(*) > 0 from bot.role_ref`)
 	var hasRoleID bool
 	err = row.Scan(&hasRoleID)
@@ -80,7 +80,7 @@ func unsetRoleHandler(event *events.ApplicationCommandInteractionCreate) {
 		log.Fatal(debug.Stack())
 		return
 	}
-	defer dbcon.Conn().Close(ctx)
+	defer dbcon.Release()
 	row := dbcon.QueryRow(ctx, `select count(*) > 0 from bot.role_ref`)
 	var hasRoleID bool
 	err = row.Scan(&hasRoleID)
@@ -123,4 +123,47 @@ func unsetRoleHandler(event *events.ApplicationCommandInteractionCreate) {
 			return
 		}
 	}
+}
+
+func forceSyncHandler(event *events.ApplicationCommandInteractionCreate) {
+	eventData := event.SlashCommandInteractionData()
+	if eventData.CommandName() != "force_sync" {
+		return
+	}
+	dbcon, err := dbpool.Acquire(ctx)
+	if err != nil {
+		log.Fatal(err)
+		log.Fatal(debug.Stack())
+		return
+	}
+	defer dbcon.Release()
+
+	// get file id
+	var fileID string
+	row := dbcon.QueryRow(
+		ctx,
+		"select file_id from bot.file_ref",
+	)
+	err = row.Scan(&fileID)
+	if err != nil {
+		log.Fatal(err)
+		log.Fatal(debug.Stack())
+		return
+	}
+	dbcon.Release()
+	// get the discord members
+	members, err := event.Client().Rest().GetMembers(*event.GuildID(), guildMemberCountRequestLimit, nullSnowflake)
+	if err != nil {
+		log.Fatal(err)
+		log.Fatal(debug.Stack())
+		return
+	}
+	// sync the spreadsheet with the discord members
+	err = syncRoleMembers(FileID(fileID), members)
+	if err != nil {
+		log.Fatal(err)
+		log.Fatal(debug.Stack())
+		return
+	}
+	log.Debug("force sync successfully completed")
 }

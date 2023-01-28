@@ -13,6 +13,7 @@ import (
 	"github.com/disgoorg/disgo/events"
 	"github.com/disgoorg/disgo/gateway"
 	"github.com/disgoorg/log"
+	"github.com/disgoorg/snowflake/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/drive/v3"
@@ -26,6 +27,8 @@ const (
 	mountSpreadsheetPermissionsFilepath = "/app/file-permissions.json"
 	mountSpreadsheetColumnDataFilepath  = "/app/column-data.csv"
 	googleApiConfigRelativeFilepath     = "/app/svc-creds.json"
+	guildMemberCountRequestLimit        = 1000
+	nullSnowflake                       = snowflake.ID(0)
 )
 
 var (
@@ -71,12 +74,13 @@ func main() {
 	}
 	defer dbpool.Close()
 	// ensure no issues with acquiring db connections
-	_, err = dbpool.Acquire(ctx)
+	dbcon, err := dbpool.Acquire(ctx)
 	if err != nil {
 		log.Fatal(err)
 		log.Fatal(debug.Stack())
 		return
 	}
+	dbcon.Release()
 	log.Debug("db pool initialized")
 
 	// init google api client
@@ -123,6 +127,7 @@ func main() {
 		bot.WithEventListenerFunc(onGuildReady),
 		bot.WithEventListenerFunc(setRoleHandler),
 		bot.WithEventListenerFunc(unsetRoleHandler),
+		bot.WithEventListenerFunc(forceSyncHandler),
 	)
 	if err != nil {
 		log.Fatal(err)
