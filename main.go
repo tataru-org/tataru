@@ -128,6 +128,7 @@ func main() {
 		bot.WithEventListenerFunc(setRoleHandler),
 		bot.WithEventListenerFunc(unsetRoleHandler),
 		bot.WithEventListenerFunc(forceSyncHandler),
+		bot.WithEventListenerFunc(onGuildMemberUpdateHandler),
 	)
 	if err != nil {
 		log.Fatal(err)

@@ -16,7 +16,7 @@ func sendEventErrorResponse(event *events.ApplicationCommandInteractionCreate, e
 	trace := string(debug.Stack())
 	e := event.CreateMessage(
 		discord.MessageCreate{
-			Content: fmt.Sprintf("Error while setting role; report this to one of the developers.\nerror: %s\nstack trace: %s", err.Error(), trace),
+			Content: fmt.Sprintf("An error occurred; report this to one of the developers.\nerror: %s\nstack trace: %s", err.Error(), trace),
 			Flags:   discord.MessageFlagEphemeral,
 		},
 	)
@@ -268,7 +268,7 @@ func syncRoleMembers(id FileID, guildMembers []discord.Member) error {
 		return err
 	}
 	// get the watched role id
-	var roleID string
+	var roleID *string
 	row := dbcon.QueryRow(ctx, `select role_id from bot.role_ref`)
 	err = row.Scan(&roleID)
 	if err == pgx.ErrNoRows {
@@ -289,7 +289,7 @@ func syncRoleMembers(id FileID, guildMembers []discord.Member) error {
 	roleMembers := []discord.Member{}
 	for i := 0; i < len(guildMembers); i++ {
 		for j := 0; j < len(guildMembers[i].RoleIDs); j++ {
-			if guildMembers[i].RoleIDs[j].String() == roleID {
+			if guildMembers[i].RoleIDs[j].String() == *roleID {
 				roleMembers = append(roleMembers, guildMembers[i])
 				break
 			}
