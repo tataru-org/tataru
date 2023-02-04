@@ -146,9 +146,9 @@ func unsetRoleHandler(event *events.ApplicationCommandInteractionCreate) {
 	}
 }
 
-func forceSyncHandler(event *events.ApplicationCommandInteractionCreate) {
+func forceMemberSyncHandler(event *events.ApplicationCommandInteractionCreate) {
 	eventData := event.SlashCommandInteractionData()
-	if eventData.CommandName() != "force_sync" {
+	if eventData.CommandName() != "force_member_sync" {
 		return
 	}
 

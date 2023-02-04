@@ -127,7 +127,7 @@ func main() {
 		bot.WithEventListenerFunc(onGuildReady),
 		bot.WithEventListenerFunc(setRoleHandler),
 		bot.WithEventListenerFunc(unsetRoleHandler),
-		bot.WithEventListenerFunc(forceSyncHandler),
+		bot.WithEventListenerFunc(forceMemberSyncHandler),
 		bot.WithEventListenerFunc(onGuildMemberUpdateHandler),
 		bot.WithEventListenerFunc(syncFormattingHandler),
 		bot.WithEventListenerFunc(syncFilePermsHandler),
