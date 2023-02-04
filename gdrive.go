@@ -24,6 +24,7 @@ func createFile(title string) (*FileID, error) {
 		MimeType:        fileMimeType,
 		Name:            title,
 		WritersCanShare: true,
+		Parents:         []string{botConfig.GoogleDriveDestinationFolderId},
 	}
 	f, err := gdriveSvc.Files.Create(file).SupportsAllDrives(true).Do()
 	if err != nil {
