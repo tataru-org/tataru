@@ -15,8 +15,8 @@ func onGuildMemberUpdateHandler(event *events.GuildMemberUpdate) {
 
 	dbcon, err := dbpool.Acquire(ctx)
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 	defer dbcon.Release()
@@ -26,13 +26,13 @@ func onGuildMemberUpdateHandler(event *events.GuildMemberUpdate) {
 	row := dbcon.QueryRow(ctx, `select role_id from bot.role_ref`)
 	err = row.Scan(&roleID)
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 	if roleID == nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 
@@ -61,29 +61,29 @@ func onGuildMemberUpdateHandler(event *events.GuildMemberUpdate) {
 	)
 	err = row.Scan(&fileID)
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 	if fileID == nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 
 	// get column formatting
 	columnMap, err := NewColumnMap(mountSpreadsheetColumnDataFilepath)
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 
 	// get the spreadsheet
 	spreadsheet, err := gsheetsSvc.Spreadsheets.Get(*fileID).IncludeGridData(true).Do()
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 
@@ -143,16 +143,16 @@ func onGuildMemberUpdateHandler(event *events.GuildMemberUpdate) {
 			Requests: requests,
 		}).Do()
 		if err != nil {
-			log.Fatal(err)
-			log.Fatal(debug.Stack())
+			log.Error(err)
+			log.Error(debug.Stack())
 			return
 		}
 		log.Debugf("member %s (id:%s) added to spreadsheet", username, userID)
 
 		_, err = dbcon.Exec(ctx, `insert into bot.members(member_id,member_name) values($1,$2)`, userID, username)
 		if err != nil {
-			log.Fatal(err)
-			log.Fatal(debug.Stack())
+			log.Error(err)
+			log.Error(debug.Stack())
 			return
 		}
 		log.Debugf("member %s (id:%s) added to db", username, userID)
@@ -191,16 +191,16 @@ func onGuildMemberUpdateHandler(event *events.GuildMemberUpdate) {
 			Requests: requests,
 		}).Do()
 		if err != nil {
-			log.Fatal(err)
-			log.Fatal(debug.Stack())
+			log.Error(err)
+			log.Error(debug.Stack())
 			return
 		}
 		log.Debugf("member %s (id:%s) deleted from spreadsheet", username, userID)
 
 		_, err = dbcon.Exec(ctx, `delete from bot.members where member_id=$1`, userID)
 		if err != nil {
-			log.Fatal(err)
-			log.Fatal(debug.Stack())
+			log.Error(err)
+			log.Error(debug.Stack())
 			return
 		}
 		log.Debugf("member %s (id:%s) deleted from db", username, userID)

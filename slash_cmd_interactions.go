@@ -20,15 +20,15 @@ func setRoleHandler(event *events.ApplicationCommandInteractionCreate) {
 
 	err := event.DeferCreateMessage(true)
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 	// check if a role ref exists
 	dbcon, err := dbpool.Acquire(ctx)
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 	defer dbcon.Release()
@@ -37,8 +37,8 @@ func setRoleHandler(event *events.ApplicationCommandInteractionCreate) {
 	err = row.Scan(&hasRoleID)
 	if err != nil {
 
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 	if hasRoleID {
@@ -51,8 +51,8 @@ func setRoleHandler(event *events.ApplicationCommandInteractionCreate) {
 			},
 		)
 		if err != nil {
-			log.Fatal(err)
-			log.Fatal(debug.Stack())
+			log.Error(err)
+			log.Error(debug.Stack())
 			return
 		}
 	} else {
@@ -61,8 +61,8 @@ func setRoleHandler(event *events.ApplicationCommandInteractionCreate) {
 		_, err = dbcon.Exec(ctx, `insert into bot.role_ref(role_id) values($1)`, role.ID.String())
 		if err != nil {
 
-			log.Fatal(err)
-			log.Fatal(debug.Stack())
+			log.Error(err)
+			log.Error(debug.Stack())
 			return
 		}
 		content := fmt.Sprintf("Role %s has been set.", role.Name)
@@ -74,8 +74,8 @@ func setRoleHandler(event *events.ApplicationCommandInteractionCreate) {
 			},
 		)
 		if err != nil {
-			log.Fatal(err)
-			log.Fatal(debug.Stack())
+			log.Error(err)
+			log.Error(debug.Stack())
 		}
 	}
 }
@@ -88,15 +88,15 @@ func unsetRoleHandler(event *events.ApplicationCommandInteractionCreate) {
 
 	err := event.DeferCreateMessage(true)
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 	// check if a role ref exists
 	dbcon, err := dbpool.Acquire(ctx)
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 	defer dbcon.Release()
@@ -104,16 +104,16 @@ func unsetRoleHandler(event *events.ApplicationCommandInteractionCreate) {
 	var hasRoleID bool
 	err = row.Scan(&hasRoleID)
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 	if hasRoleID {
 		// unset role ref
 		_, err = dbcon.Exec(ctx, `truncate table bot.role_ref`)
 		if err != nil {
-			log.Fatal(err)
-			log.Fatal(debug.Stack())
+			log.Error(err)
+			log.Error(debug.Stack())
 			return
 		}
 		content := "Role has been unset."
@@ -125,8 +125,8 @@ func unsetRoleHandler(event *events.ApplicationCommandInteractionCreate) {
 			},
 		)
 		if err != nil {
-			log.Fatal(err)
-			log.Fatal(debug.Stack())
+			log.Error(err)
+			log.Error(debug.Stack())
 			return
 		}
 	} else {
@@ -139,8 +139,8 @@ func unsetRoleHandler(event *events.ApplicationCommandInteractionCreate) {
 			},
 		)
 		if err != nil {
-			log.Fatal(err)
-			log.Fatal(debug.Stack())
+			log.Error(err)
+			log.Error(debug.Stack())
 			return
 		}
 	}
@@ -154,14 +154,14 @@ func forceMemberSyncHandler(event *events.ApplicationCommandInteractionCreate) {
 
 	err := event.DeferCreateMessage(true)
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 	dbcon, err := dbpool.Acquire(ctx)
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 	defer dbcon.Release()
@@ -174,23 +174,23 @@ func forceMemberSyncHandler(event *events.ApplicationCommandInteractionCreate) {
 	)
 	err = row.Scan(&fileID)
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 	dbcon.Release()
 	// get the discord members
 	members, err := event.Client().Rest().GetMembers(*event.GuildID(), guildMemberCountRequestLimit, nullSnowflake)
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 	// sync the spreadsheet with the discord members
 	err = syncRoleMembers(FileID(fileID), members)
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 	log.Debug("force member sync successfully completed")
@@ -203,8 +203,8 @@ func forceMemberSyncHandler(event *events.ApplicationCommandInteractionCreate) {
 		},
 	)
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 }
@@ -217,14 +217,14 @@ func syncFormattingHandler(event *events.ApplicationCommandInteractionCreate) {
 
 	err := event.DeferCreateMessage(true)
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 	dbcon, err := dbpool.Acquire(ctx)
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 	defer dbcon.Release()
@@ -236,27 +236,27 @@ func syncFormattingHandler(event *events.ApplicationCommandInteractionCreate) {
 	)
 	err = row.Scan(&fileID)
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 	dbcon.Release()
 	if fileID == nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 
 	columnMap, err := NewColumnMap(mountSpreadsheetColumnDataFilepath)
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 	spreadsheet, err := gsheetsSvc.Spreadsheets.Get(*fileID).IncludeGridData(true).Do()
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 
@@ -323,8 +323,8 @@ func syncFormattingHandler(event *events.ApplicationCommandInteractionCreate) {
 		Requests: requests,
 	}).Do()
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 	log.Debug("formatting successfully synced")
@@ -337,8 +337,8 @@ func syncFormattingHandler(event *events.ApplicationCommandInteractionCreate) {
 		},
 	)
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 }
@@ -351,14 +351,14 @@ func syncFilePermsHandler(event *events.ApplicationCommandInteractionCreate) {
 
 	err := event.DeferCreateMessage(true)
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 	dbcon, err := dbpool.Acquire(ctx)
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 	defer dbcon.Release()
@@ -370,20 +370,20 @@ func syncFilePermsHandler(event *events.ApplicationCommandInteractionCreate) {
 	)
 	err = row.Scan(&fileID)
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 	if fileID == nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 	// get perms from db
 	rows, err := dbcon.Query(ctx, `select perm_id, email, role, role_type from bot.permissions`)
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 	dbPerms := map[string]*drive.Permission{}
@@ -394,8 +394,8 @@ func syncFilePermsHandler(event *events.ApplicationCommandInteractionCreate) {
 		var roleType string
 		err = rows.Scan(&id, &email, &role, &roleType)
 		if err != nil {
-			log.Fatal(err)
-			log.Fatal(debug.Stack())
+			log.Error(err)
+			log.Error(debug.Stack())
 			return
 		}
 		dbPerms[id] = &drive.Permission{
@@ -408,8 +408,8 @@ func syncFilePermsHandler(event *events.ApplicationCommandInteractionCreate) {
 	// get perms from the perm file
 	permsOnDisk, err := GetPermissions(mountSpreadsheetPermissionsFilepath)
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 	// get perms from
@@ -501,8 +501,8 @@ func syncFilePermsHandler(event *events.ApplicationCommandInteractionCreate) {
 	for i := 0; i < len(permIDsToDelete); i++ {
 		err = gdriveSvc.Permissions.Delete(*fileID, permIDsToDelete[i]).SupportsAllDrives(true).Do()
 		if err != nil {
-			log.Fatal(err)
-			log.Fatal(debug.Stack())
+			log.Error(err)
+			log.Error(debug.Stack())
 			return
 		}
 	}
@@ -511,8 +511,8 @@ func syncFilePermsHandler(event *events.ApplicationCommandInteractionCreate) {
 	for permID, perm := range permsToUpdate {
 		_, err = gdriveSvc.Permissions.Update(*fileID, permID, perm).SupportsAllDrives(true).Do()
 		if err != nil {
-			log.Fatal(err)
-			log.Fatal(debug.Stack())
+			log.Error(err)
+			log.Error(debug.Stack())
 			return
 		}
 	}
@@ -522,8 +522,8 @@ func syncFilePermsHandler(event *events.ApplicationCommandInteractionCreate) {
 	for i := 0; i < len(permsToAdd); i++ {
 		p, err := gdriveSvc.Permissions.Create(*fileID, permsToAdd[i]).SupportsAllDrives(true).Do()
 		if err != nil {
-			log.Fatal(err)
-			log.Fatal(debug.Stack())
+			log.Error(err)
+			log.Error(debug.Stack())
 			return
 		}
 		newPermMap[p.Id] = &drive.Permission{
@@ -536,16 +536,16 @@ func syncFilePermsHandler(event *events.ApplicationCommandInteractionCreate) {
 
 	tx, err := dbcon.Begin(ctx)
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 	// delete perms from db
 	for i := 0; i < len(permIDsToDelete); i++ {
 		_, err = tx.Exec(ctx, `delete from bot.permissions where perm_id=$1`, permIDsToDelete[i])
 		if err != nil {
-			log.Fatal(err)
-			log.Fatal(debug.Stack())
+			log.Error(err)
+			log.Error(debug.Stack())
 			return
 		}
 	}
@@ -562,8 +562,8 @@ func syncFilePermsHandler(event *events.ApplicationCommandInteractionCreate) {
 			perm.Type,
 		)
 		if err != nil {
-			log.Fatal(err)
-			log.Fatal(debug.Stack())
+			log.Error(err)
+			log.Error(debug.Stack())
 			return
 		}
 	}
@@ -579,16 +579,16 @@ func syncFilePermsHandler(event *events.ApplicationCommandInteractionCreate) {
 			permID,
 		)
 		if err != nil {
-			log.Fatal(err)
-			log.Fatal(debug.Stack())
+			log.Error(err)
+			log.Error(debug.Stack())
 			return
 		}
 	}
 	log.Debug("perms queued to be updated in db")
 	err = tx.Commit(ctx)
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 	dbcon.Release()
@@ -603,8 +603,8 @@ func syncFilePermsHandler(event *events.ApplicationCommandInteractionCreate) {
 		},
 	)
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 }

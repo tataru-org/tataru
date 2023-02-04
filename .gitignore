@@ -4,5 +4,6 @@
 !go.sum
 !go.mod
 !Dockerfile
+!.gitlab-ci.yml
 
 !*.go

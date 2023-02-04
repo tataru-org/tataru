@@ -10,15 +10,15 @@ import (
 func onGuildReady(event *events.GuildReady) {
 	dbcon, err := dbpool.Acquire(ctx)
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 	defer dbcon.Release()
 	isValidDb, err := isValidDatabase()
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 	if isValidDb {
@@ -27,8 +27,8 @@ func onGuildReady(event *events.GuildReady) {
 		log.Debug("schema is invalid")
 		err := initSchema()
 		if err != nil {
-			log.Fatal(err)
-			log.Fatal(debug.Stack())
+			log.Error(err)
+			log.Error(debug.Stack())
 			return
 		}
 		log.Debug("schema initialized")
@@ -42,8 +42,8 @@ func onGuildReady(event *events.GuildReady) {
 	)
 	err = row.Scan(&fileRefExists)
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 
@@ -57,14 +57,14 @@ func onGuildReady(event *events.GuildReady) {
 		)
 		err = row.Scan(&fileIDStr)
 		if err != nil {
-			log.Fatal(err)
-			log.Fatal(debug.Stack())
+			log.Error(err)
+			log.Error(debug.Stack())
 			return
 		}
 		exists, err := fileExists(FileID(fileIDStr))
 		if err != nil {
-			log.Fatal(err)
-			log.Fatal(debug.Stack())
+			log.Error(err)
+			log.Error(debug.Stack())
 			return
 		}
 		dbcon.Release()
@@ -73,8 +73,8 @@ func onGuildReady(event *events.GuildReady) {
 			log.Debug("file exists in db on startup but does not exist in google drive")
 			fileID, err = buildFile(false)
 			if err != nil {
-				log.Fatal(err)
-				log.Fatal(debug.Stack())
+				log.Error(err)
+				log.Error(debug.Stack())
 				return
 			}
 			log.Debug("file built")
@@ -87,8 +87,8 @@ func onGuildReady(event *events.GuildReady) {
 		log.Debug("file does not exist in db on startup")
 		fileID, err = buildFile(false)
 		if err != nil {
-			log.Fatal(err)
-			log.Fatal(debug.Stack())
+			log.Error(err)
+			log.Error(debug.Stack())
 			return
 		}
 		log.Debug("file built")
@@ -97,14 +97,14 @@ func onGuildReady(event *events.GuildReady) {
 	// check if the file needs to be updated
 	members, err := event.Client().Rest().GetMembers(event.GuildID, guildMemberCountRequestLimit, nullSnowflake)
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 	err = syncRoleMembers(*fileID, members)
 	if err != nil {
-		log.Fatal(err)
-		log.Fatal(debug.Stack())
+		log.Error(err)
+		log.Error(debug.Stack())
 		return
 	}
 	log.Debug("sync successfully completed")
