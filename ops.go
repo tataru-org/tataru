@@ -37,7 +37,7 @@ func buildFile(badFileExists bool) (*FileID, error) {
 	}
 	newPermMap := map[string]*drive.Permission{}
 	for i := 0; i < len(permsFromDisk); i++ {
-		p, err := gdriveSvc.Permissions.Create(string(*fileID), permsFromDisk[i]).Do()
+		p, err := gdriveSvc.Permissions.Create(string(*fileID), permsFromDisk[i]).SupportsAllDrives(true).Do()
 		if err != nil {
 			return nil, err
 		}

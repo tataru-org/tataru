@@ -499,7 +499,7 @@ func syncFilePermsHandler(event *events.ApplicationCommandInteractionCreate) {
 	}
 	// delete perms
 	for i := 0; i < len(permIDsToDelete); i++ {
-		err = gdriveSvc.Permissions.Delete(*fileID, permIDsToDelete[i]).Do()
+		err = gdriveSvc.Permissions.Delete(*fileID, permIDsToDelete[i]).SupportsAllDrives(true).Do()
 		if err != nil {
 			log.Fatal(err)
 			log.Fatal(debug.Stack())
@@ -509,7 +509,7 @@ func syncFilePermsHandler(event *events.ApplicationCommandInteractionCreate) {
 	log.Debug("perms deleted")
 	// update perms
 	for permID, perm := range permsToUpdate {
-		_, err = gdriveSvc.Permissions.Update(*fileID, permID, perm).Do()
+		_, err = gdriveSvc.Permissions.Update(*fileID, permID, perm).SupportsAllDrives(true).Do()
 		if err != nil {
 			log.Fatal(err)
 			log.Fatal(debug.Stack())
@@ -520,7 +520,7 @@ func syncFilePermsHandler(event *events.ApplicationCommandInteractionCreate) {
 	// create new perms
 	newPermMap := map[string]*drive.Permission{}
 	for i := 0; i < len(permsToAdd); i++ {
-		p, err := gdriveSvc.Permissions.Create(*fileID, permsToAdd[i]).Do()
+		p, err := gdriveSvc.Permissions.Create(*fileID, permsToAdd[i]).SupportsAllDrives(true).Do()
 		if err != nil {
 			log.Fatal(err)
 			log.Fatal(debug.Stack())

@@ -26,8 +26,8 @@ func createSlashCommands() []discord.ApplicationCommandCreate {
 			DefaultMemberPermissions: &adminPerm,
 		},
 		discord.SlashCommandCreate{
-			Name:                     "force_sync",
-			Description:              "Force sync the mount spreadsheet with discord",
+			Name:                     "force_member_sync",
+			Description:              "Force syncs the members in the mount spreadsheet with discord",
 			DefaultMemberPermissions: &adminPerm,
 		},
 		discord.SlashCommandCreate{

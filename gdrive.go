@@ -11,7 +11,7 @@ type SheetID int64
 type PermissionID string
 
 func fileExists(fileId FileID) (*bool, error) {
-	f, err := gdriveSvc.Files.Get(string(fileId)).Do()
+	f, err := gdriveSvc.Files.Get(string(fileId)).SupportsAllDrives(true).Do()
 	if err != nil {
 		return nil, err
 	}
@@ -25,15 +25,10 @@ func createFile(title string) (*FileID, error) {
 		Name:            title,
 		WritersCanShare: true,
 	}
-	f, err := gdriveSvc.Files.Create(file).Do()
+	f, err := gdriveSvc.Files.Create(file).SupportsAllDrives(true).Do()
 	if err != nil {
 		return nil, err
 	}
 	fid := FileID(f.Id)
 	return &fid, err
-}
-
-// Type, Role, and EmailAddress are required properties for perm
-func addFilePermmission(fileId FileID, perm *drive.Permission) (*drive.Permission, error) {
-	return gdriveSvc.Permissions.Create(string(fileId), perm).Do()
 }
