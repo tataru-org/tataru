@@ -19,6 +19,8 @@ dev-build:
     - docker push $IMG_COMMIT
     - docker push $IMG_VERS
     - docker logout
+  tags:
+    - dind
   only:
     - dev
 
@@ -43,5 +45,7 @@ dev-deploy:
     - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker container create --restart=always --network $DEV_NETWORK_NAME --ip $DEV_CONTAINER_IP --name $DEV_CONTAINER_NAME -v $DEV_BOT_CONFIG_FILEPATH:/app/config.json -v $DEV_FILE_PERMS_FILEPATH:/app/file-permissions.json -v $DEV_COLUMN_DATA_FILEPATH:/app/column-data.csv -v $DEV_GOOGLE_API_SVC_CREDS_FILEPATH:/app/svc-creds.json $IMG_COMMIT"
     - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker container start $DEV_CONTAINER_NAME"
     - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker logout"
+  tags:
+    - alpine
   only:
     - dev
