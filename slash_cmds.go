@@ -32,7 +32,12 @@ func createSlashCommands() []discord.ApplicationCommandCreate {
 		},
 		discord.SlashCommandCreate{
 			Name:                     "sync_formatting",
-			Description:              "Syncs the spreadsheet formatting with the formatting file that is on disk",
+			Description:              "Syncs the spreadsheet's formatting that is specified on disk",
+			DefaultMemberPermissions: &adminPerm,
+		},
+		discord.SlashCommandCreate{
+			Name:                     "sync_file_perms",
+			Description:              "Syncs the spreadsheet's file permissions that are specified on disk",
 			DefaultMemberPermissions: &adminPerm,
 		},
 	}

@@ -6,6 +6,7 @@ import (
 	"github.com/disgoorg/disgo/discord"
 	"github.com/disgoorg/log"
 	"github.com/jackc/pgx/v5"
+	"google.golang.org/api/drive/v3"
 	"google.golang.org/api/sheets/v4"
 )
 
@@ -30,23 +31,27 @@ func buildFile(badFileExists bool) (*FileID, error) {
 	}
 
 	// add permissions to the file
-	perms, err := GetPermissions(mountSpreadsheetPermissionsFilepath)
+	permsFromDisk, err := GetPermissions(mountSpreadsheetPermissionsFilepath)
 	if err != nil {
 		return nil, err
 	}
-	permIDs := make([]PermissionID, len(perms))
-	for i := 0; i < len(perms); i++ {
-		pid, err := addFilePermmission(*fileID, perms[i])
+	newPermMap := map[string]*drive.Permission{}
+	for i := 0; i < len(permsFromDisk); i++ {
+		p, err := gdriveSvc.Permissions.Create(string(*fileID), permsFromDisk[i]).Do()
 		if err != nil {
 			return nil, err
 		}
-		permIDs[i] = *pid
+		newPermMap[p.Id] = &drive.Permission{
+			EmailAddress: permsFromDisk[i].EmailAddress,
+			Type:         p.Type,
+			Role:         p.Role,
+		}
 		log.Debugf(
 			"permission added for: id=%s;email=%s;role=%s;type=%s",
-			permIDs[i],
-			perms[i].EmailAddress,
-			perms[i].Role,
-			perms[i].Type,
+			p.Id,
+			permsFromDisk[i].EmailAddress,
+			permsFromDisk[i].Role,
+			permsFromDisk[i].Type,
 		)
 	}
 
@@ -217,8 +222,16 @@ func buildFile(badFileExists bool) (*FileID, error) {
 		return nil, err
 	}
 	// put perm ids into db
-	for i := 0; i < len(permIDs); i++ {
-		_, err = tx.Exec(ctx, `insert into bot.permissions(file_id,perm_id) values($1,$2)`, fileID, permIDs[i])
+	for id, perm := range newPermMap {
+		_, err = tx.Exec(
+			ctx,
+			`insert into bot.permissions(file_id,perm_id,email,role,role_type) values($1,$2,$3,$4,$5)`,
+			fileID,
+			id,
+			perm.EmailAddress,
+			perm.Role,
+			perm.Type,
+		)
 		if err != nil {
 			return nil, err
 		}

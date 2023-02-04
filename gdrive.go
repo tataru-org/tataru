@@ -34,19 +34,6 @@ func createFile(title string) (*FileID, error) {
 }
 
 // Type, Role, and EmailAddress are required properties for perm
-func addFilePermmission(fileId FileID, perm *drive.Permission) (*PermissionID, error) {
-	p, err := gdriveSvc.Permissions.Create(string(fileId), perm).Do()
-	if err != nil {
-		return nil, err
-	}
-	pid := PermissionID(p.Id)
-	return &pid, err
-}
-
-func removeFilePermission(fileId FileID, permId PermissionID) error {
-	err := gdriveSvc.Permissions.Delete(string(fileId), string(permId)).Do()
-	if err != nil {
-		return err
-	}
-	return nil
+func addFilePermmission(fileId FileID, perm *drive.Permission) (*drive.Permission, error) {
+	return gdriveSvc.Permissions.Create(string(fileId), perm).Do()
 }

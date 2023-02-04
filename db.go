@@ -26,6 +26,9 @@ func initSchema() error {
 		create table if not exists bot.permissions (
 			file_id varchar(128) not null,
 			perm_id varchar(128) primary key not null,
+			email varchar(128),
+			role varchar(128) not null,
+			role_type varchar(128) not null,
 			constraint fk_file_ref
 			foreign key (file_id)
 				references bot.file_ref(file_id)

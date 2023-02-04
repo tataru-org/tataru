@@ -130,6 +130,7 @@ func main() {
 		bot.WithEventListenerFunc(forceSyncHandler),
 		bot.WithEventListenerFunc(onGuildMemberUpdateHandler),
 		bot.WithEventListenerFunc(syncFormattingHandler),
+		bot.WithEventListenerFunc(syncFilePermsHandler),
 	)
 	if err != nil {
 		log.Fatal(err)
