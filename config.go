@@ -6,16 +6,17 @@ import (
 )
 
 type Config struct {
-	BotName                  string
-	MountSpreadsheetFileName string
-	MountSpreadsheetTitle    string
-	DiscordToken             string
-	DBUsername               string
-	DBUserPassword           string
-	DBIP                     string
-	DBPort                   string
-	DBName                   string
-	LogLevel                 uint32
+	BotName                        string
+	MountSpreadsheetFileName       string
+	MountSpreadsheetTitle          string
+	GoogleDriveDestinationFolderId string
+	DiscordToken                   string
+	DBUsername                     string
+	DBUserPassword                 string
+	DBIP                           string
+	DBPort                         string
+	DBName                         string
+	LogLevel                       uint32
 }
 
 func NewConfig(configFilepath string) (*Config, error) {
@@ -26,16 +27,17 @@ func NewConfig(configFilepath string) (*Config, error) {
 	defer configFile.Close()
 
 	rawConfig := struct {
-		BotName                  string
-		MountSpreadsheetFileName string
-		MountSpreadsheetTitle    string
-		DiscordToken             string
-		DBUsername               string
-		DBUserPassword           string
-		DBIP                     string
-		DBPort                   string
-		DBName                   string
-		LogLevel                 string
+		BotName                        string
+		MountSpreadsheetFileName       string
+		MountSpreadsheetTitle          string
+		GoogleDriveDestinationFolderId string
+		DiscordToken                   string
+		DBUsername                     string
+		DBUserPassword                 string
+		DBIP                           string
+		DBPort                         string
+		DBName                         string
+		LogLevel                       string
 	}{}
 	err = json.NewDecoder(configFile).Decode(&rawConfig)
 	if err != nil {
@@ -62,15 +64,16 @@ func NewConfig(configFilepath string) (*Config, error) {
 		lvl = 2
 	}
 	return &Config{
-		BotName:                  rawConfig.BotName,
-		MountSpreadsheetFileName: rawConfig.MountSpreadsheetFileName,
-		MountSpreadsheetTitle:    rawConfig.MountSpreadsheetTitle,
-		DiscordToken:             rawConfig.DiscordToken,
-		DBUsername:               rawConfig.DBUsername,
-		DBUserPassword:           rawConfig.DBUserPassword,
-		DBIP:                     rawConfig.DBIP,
-		DBPort:                   rawConfig.DBPort,
-		DBName:                   rawConfig.DBName,
-		LogLevel:                 lvl,
+		BotName:                        rawConfig.BotName,
+		MountSpreadsheetFileName:       rawConfig.MountSpreadsheetFileName,
+		MountSpreadsheetTitle:          rawConfig.MountSpreadsheetTitle,
+		GoogleDriveDestinationFolderId: rawConfig.GoogleDriveDestinationFolderId,
+		DiscordToken:                   rawConfig.DiscordToken,
+		DBUsername:                     rawConfig.DBUsername,
+		DBUserPassword:                 rawConfig.DBUserPassword,
+		DBIP:                           rawConfig.DBIP,
+		DBPort:                         rawConfig.DBPort,
+		DBName:                         rawConfig.DBName,
+		LogLevel:                       lvl,
 	}, nil
 }
