@@ -11,9 +11,9 @@ stages:
 
 go1.19-test:
   stage: test
-  image: golang:1.19.5-alpine3.17
+  image: golang:1.19.5
   script:
-    - go test -coverprofile testcover -json ./... >> testcover.json
+    - CGO_ENABLED=0 go test -v -coverprofile testcover -json ./... >> testcover.json
   only:
     - merge_requests
   tags:
