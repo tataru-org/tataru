@@ -319,13 +319,11 @@ func syncFormattingHandler(event *events.ApplicationCommandInteractionCreate) {
 			},
 		}
 	}
-	_, err = gsheetsSvc.Spreadsheets.BatchUpdate(spreadsheet.SpreadsheetId, &sheets.BatchUpdateSpreadsheetRequest{
-		Requests: requests,
-	}).Do()
-	if err != nil {
-		log.Error(err)
-		log.Error(debug.Stack())
-		return
+	googleSheetsWriteReqs <- &SheetBatchUpdate{
+		ID: spreadsheet.SpreadsheetId,
+		Batch: &sheets.BatchUpdateSpreadsheetRequest{
+			Requests: requests,
+		},
 	}
 	log.Debug("formatting successfully synced")
 	content := "Formatting successfully synced"

@@ -139,13 +139,11 @@ func onGuildMemberUpdateHandler(event *events.GuildMemberUpdate) {
 				},
 			}
 		}
-		_, err = gsheetsSvc.Spreadsheets.BatchUpdate(spreadsheet.SpreadsheetId, &sheets.BatchUpdateSpreadsheetRequest{
-			Requests: requests,
-		}).Do()
-		if err != nil {
-			log.Error(err)
-			log.Error(debug.Stack())
-			return
+		googleSheetsWriteReqs <- &SheetBatchUpdate{
+			ID: spreadsheet.SpreadsheetId,
+			Batch: &sheets.BatchUpdateSpreadsheetRequest{
+				Requests: requests,
+			},
 		}
 		log.Debugf("member %s (id:%s) added to spreadsheet", username, userID)
 
@@ -187,13 +185,11 @@ func onGuildMemberUpdateHandler(event *events.GuildMemberUpdate) {
 				},
 			}
 		}
-		_, err = gsheetsSvc.Spreadsheets.BatchUpdate(spreadsheet.SpreadsheetId, &sheets.BatchUpdateSpreadsheetRequest{
-			Requests: requests,
-		}).Do()
-		if err != nil {
-			log.Error(err)
-			log.Error(debug.Stack())
-			return
+		googleSheetsWriteReqs <- &SheetBatchUpdate{
+			ID: spreadsheet.SpreadsheetId,
+			Batch: &sheets.BatchUpdateSpreadsheetRequest{
+				Requests: requests,
+			},
 		}
 		log.Debugf("member %s (id:%s) deleted from spreadsheet", username, userID)
 
