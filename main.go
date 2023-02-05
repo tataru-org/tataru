@@ -33,7 +33,7 @@ const (
 
 var (
 	maxRetryDuration           float64 = 3600
-	googleSheetsWriteRateLimit float64 = 3600 // req / sec
+	googleSheetsWriteRateLimit float64 = 1 // req / sec
 )
 
 var (
