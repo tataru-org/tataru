@@ -5,8 +5,19 @@ variables:
   IMG_VERS: $CI_REGISTRY_IMAGE/$CI_COMMIT_REF_NAME:$VER-$CI_COMMIT_SHORT_SHA
 
 stages:
+  - test
   - build
   - deploy
+
+go1.19-test:
+  stage: test
+  image: golang:1.19.5-alpine3.17
+  script:
+    - go test -coverprofile testcover -json ./... >> testcover.json
+  only:
+    - merge_requests
+  tags:
+    - go1.19
 
 stable-build:
   stage: build
