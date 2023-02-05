@@ -15,6 +15,12 @@ go1.19-test:
   script:
     - go install github.com/jstemmer/go-junit-report/v2@latest
     - CGO_ENABLED=0 go test -v 2>&1 ./... | go-junit-report -set-exit-code > report.xml
+  artifacts:
+    when: always
+    paths:
+      - report.xml
+    reports:
+      junit: report.xml
   only:
     - merge_requests
   tags:
