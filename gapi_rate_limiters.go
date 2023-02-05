@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strconv"
 	"time"
 
 	"github.com/disgoorg/log"
@@ -12,12 +13,31 @@ type SheetBatchUpdate struct {
 	Batch *sheets.BatchUpdateSpreadsheetRequest
 }
 
-func RetrySheetBatchUpdate(req *SheetBatchUpdate, prevLimit, maxWaitSeconds float64) {
-	waitDur := CalcThrottledWaitDuration(prevLimit, maxWaitSeconds)
+func RetrySheetBatchUpdate(req *SheetBatchUpdate, prevLimit, maxWaitSeconds float64, hasSuggestedRetryDur bool) {
+	var waitDur float64
+	if hasSuggestedRetryDur {
+		waitDur = prevLimit
+	} else {
+		waitDur = CalcThrottledWaitDuration(prevLimit, maxWaitSeconds)
+	}
 	<-time.After(time.Duration(waitDur) * time.Second)
 	resp, err := gsheetsSvc.Spreadsheets.BatchUpdate(req.ID, req.Batch).Do()
+	log.Debugf("google sheets batch update response HTTP status code: %d", resp.HTTPStatusCode)
 	if resp.HTTPStatusCode == 429 {
-		RetrySheetBatchUpdate(req, waitDur, maxWaitSeconds)
+		durStr := resp.Header.Get("Retry-After")
+		var initWait float64
+		innerHasSuggestedRetryDur := false
+		if durStr == "" {
+			initWait = waitDur
+		} else {
+			initWait, err = strconv.ParseFloat(durStr, 64)
+			if err != nil {
+				log.Error(err)
+				return
+			}
+			innerHasSuggestedRetryDur = true
+		}
+		RetrySheetBatchUpdate(req, initWait, maxWaitSeconds, innerHasSuggestedRetryDur)
 	}
 	if err != nil {
 		log.Error(err)
@@ -29,8 +49,22 @@ func googleSheetBatchUpdateRateLimiter(rateLimit, maxRetryDuration float64, reqs
 		waitDur := CalcWaitDuration(rateLimit)
 		req := <-reqs
 		resp, err := gsheetsSvc.Spreadsheets.BatchUpdate(req.ID, req.Batch).Do()
+		log.Debugf("google sheets batch update response HTTP status code: %d", resp.HTTPStatusCode)
 		if resp.HTTPStatusCode == 429 {
-			RetrySheetBatchUpdate(req, waitDur, 3600)
+			durStr := resp.Header.Get("Retry-After")
+			var initWait float64
+			hasSuggestedRetryDur := false
+			if durStr == "" {
+				initWait = waitDur
+			} else {
+				initWait, err = strconv.ParseFloat(durStr, 64)
+				if err != nil {
+					log.Error(err)
+					continue
+				}
+				hasSuggestedRetryDur = true
+			}
+			RetrySheetBatchUpdate(req, initWait, 3600, hasSuggestedRetryDur)
 		}
 		if err != nil {
 			log.Error(err)
