@@ -14,7 +14,7 @@ go1.19-test:
   image: golang:1.19.5
   script:
     - go install github.com/jstemmer/go-junit-report/v2@latest
-    - CGO_ENABLED=0 go test -v 2>&1 ./... | go-junit-report -set-exit-code > report.xml
+    - CGO_ENABLED=0 go test -coverprofile report -json ./... | go-junit-report -parser gojson > report.xml
   artifacts:
     when: always
     paths:
