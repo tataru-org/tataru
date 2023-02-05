@@ -196,11 +196,11 @@ func buildFile(badFileExists bool) (*FileID, error) {
 			Fields: "index,sheetId",
 		},
 	})
-	_, err = gsheetsSvc.Spreadsheets.BatchUpdate(spreadsheet.SpreadsheetId, &sheets.BatchUpdateSpreadsheetRequest{
-		Requests: requests,
-	}).Do()
-	if err != nil {
-		return nil, err
+	googleSheetsWriteReqs <- &SheetBatchUpdate{
+		ID: spreadsheet.SpreadsheetId,
+		Batch: &sheets.BatchUpdateSpreadsheetRequest{
+			Requests: requests,
+		},
 	}
 	log.Debug("header rows and protected ranges added to each sheet")
 
@@ -352,11 +352,11 @@ func syncRoleMembers(id FileID, guildMembers []discord.Member) error {
 		}
 	}
 	if len(requests) != 0 {
-		_, err = gsheetsSvc.Spreadsheets.BatchUpdate(spreadsheet.SpreadsheetId, &sheets.BatchUpdateSpreadsheetRequest{
-			Requests: requests,
-		}).Do()
-		if err != nil {
-			return err
+		googleSheetsWriteReqs <- &SheetBatchUpdate{
+			ID: spreadsheet.SpreadsheetId,
+			Batch: &sheets.BatchUpdateSpreadsheetRequest{
+				Requests: requests,
+			},
 		}
 		log.Debug("members deleted from spreadsheet")
 	} else {
@@ -458,11 +458,11 @@ func syncRoleMembers(id FileID, guildMembers []discord.Member) error {
 		}
 	}
 	if len(requests) != 0 {
-		_, err = gsheetsSvc.Spreadsheets.BatchUpdate(spreadsheet.SpreadsheetId, &sheets.BatchUpdateSpreadsheetRequest{
-			Requests: requests,
-		}).Do()
-		if err != nil {
-			return err
+		googleSheetsWriteReqs <- &SheetBatchUpdate{
+			ID: spreadsheet.SpreadsheetId,
+			Batch: &sheets.BatchUpdateSpreadsheetRequest{
+				Requests: requests,
+			},
 		}
 		log.Debug("members added to spreadsheet")
 	} else {

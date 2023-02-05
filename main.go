@@ -32,6 +32,15 @@ const (
 )
 
 var (
+	maxRetryDuration           float64 = 3600
+	googleSheetsWriteRateLimit float64 = 3600 // req / sec
+)
+
+var (
+	googleSheetsWriteReqs = make(chan *SheetBatchUpdate)
+)
+
+var (
 	gdriveSvc  *drive.Service
 	gsheetsSvc *sheets.Service
 	ctx        context.Context
@@ -142,6 +151,7 @@ func main() {
 	slashCmds := createSlashCommands()
 	if _, err = client.Rest().SetGlobalCommands(client.ApplicationID(), slashCmds); err != nil {
 		log.Fatal("error while registering commands: ", err)
+		return
 	}
 
 	if err = client.OpenGateway(context.TODO()); err != nil {
@@ -150,6 +160,8 @@ func main() {
 		return
 	}
 	log.Debug("bot initialized")
+
+	go googleSheetBatchUpdateRateLimiter(googleSheetsWriteRateLimit, maxRetryDuration, googleSheetsWriteReqs)
 
 	s := make(chan os.Signal, 1)
 	signal.Notify(s, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
