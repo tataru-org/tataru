@@ -40,5 +40,44 @@ func createSlashCommands() []discord.ApplicationCommandCreate {
 			Description:              "Syncs the spreadsheet's file permissions that are specified on disk",
 			DefaultMemberPermissions: &adminPerm,
 		},
+		discord.SlashCommandCreate{
+			Name:                     "try_xiv_char_search",
+			Description:              "Attempts to search for a FF14 character's ID by the given character name and save it",
+			DefaultMemberPermissions: &adminPerm,
+			Options: []discord.ApplicationCommandOption{
+				discord.ApplicationCommandOptionUser{
+					Name:        "discord_user",
+					Description: "The discord user associated with the FF14 character",
+					Required:    true,
+				},
+				discord.ApplicationCommandOptionString{
+					Name:        "xiv_character_name",
+					Description: "The entire name of a FF14 character",
+					Required:    true,
+				},
+			},
+		},
+		discord.SlashCommandCreate{
+			Name:                     "map_xiv_char_id",
+			Description:              "Maps a FF14 character's ID to the given discord user",
+			DefaultMemberPermissions: &adminPerm,
+			Options: []discord.ApplicationCommandOption{
+				discord.ApplicationCommandOptionUser{
+					Name:        "discord_user",
+					Description: "The discord user associated with the FF14 character",
+					Required:    true,
+				},
+				discord.ApplicationCommandOptionString{
+					Name:        "xiv_character_id",
+					Description: "The FF14 character's ID",
+					Required:    true,
+				},
+			},
+		},
+		discord.SlashCommandCreate{
+			Name:                     "force_scan_xiv_mounts",
+			Description:              "Force scans XIVAPI for mounts",
+			DefaultMemberPermissions: &adminPerm,
+		},
 	}
 }

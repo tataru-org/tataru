@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"runtime/debug"
 	"syscall"
+	"time"
 
 	"github.com/disgoorg/disgo"
 	"github.com/disgoorg/disgo/bot"
@@ -34,18 +35,28 @@ const (
 var (
 	maxRetryDuration           float64 = 3600
 	googleSheetsWriteRateLimit float64 = 1 // req / sec
+	xivapiLodestoneRateLimit   float64 = 1 // req / sec
 )
 
 var (
-	googleSheetsWriteReqs = make(chan *SheetBatchUpdate)
+	googleSheetsWriteReqs    = make(chan *SheetBatchUpdate)
+	xivapiLodestoneReqs      = make(chan interface{})
+	xivapiLodestoneResps     = make(chan map[XivApiTokenMap]interface{})
+	xivapiLodestoneReqTokens = make(chan XivApiTokenMap)
 )
 
 var (
-	gdriveSvc  *drive.Service
-	gsheetsSvc *sheets.Service
-	ctx        context.Context
-	dbpool     *pgxpool.Pool
-	botConfig  *Config
+	xivapiCharacterScanSleepDuration = time.Duration(3600) * time.Second
+	xivapiMountScanSleepDuration     = time.Duration(3600/2) * time.Second
+)
+
+var (
+	gdriveSvc    *drive.Service
+	gsheetsSvc   *sheets.Service
+	xivapiClient *XivApiClient
+	ctx          context.Context
+	dbpool       *pgxpool.Pool
+	botConfig    *Config
 )
 
 func onReadyHandler(event *events.Ready) {
@@ -119,6 +130,8 @@ func main() {
 		return
 	}
 	log.Debug("google sheets service initialized")
+	// init xivapi client
+	xivapiClient = NewXivApiClient(botConfig.XivapiApiKey, nil)
 
 	// init discord client
 	client, err := disgo.New(
@@ -140,6 +153,9 @@ func main() {
 		bot.WithEventListenerFunc(onGuildMemberUpdateHandler),
 		bot.WithEventListenerFunc(syncFormattingHandler),
 		bot.WithEventListenerFunc(syncFilePermsHandler),
+		bot.WithEventListenerFunc(tryXivCharacterSearchHandler),
+		bot.WithEventListenerFunc(mapXivCharIDHandler),
+		bot.WithEventListenerFunc(forceScanXivMountsHandler),
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -162,6 +178,9 @@ func main() {
 	log.Debug("bot initialized")
 
 	go googleSheetBatchUpdateRateLimiter(googleSheetsWriteRateLimit, maxRetryDuration, googleSheetsWriteReqs)
+	go xivApiLodestoneRequestRateLimiter(xivapiLodestoneRateLimit, maxRetryDuration, xivapiLodestoneReqs, xivapiLodestoneResps, xivapiLodestoneReqTokens)
+	go xivapiScanForCharacterIDs()
+	go scanForMounts()
 
 	s := make(chan os.Signal, 1)
 	signal.Notify(s, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)

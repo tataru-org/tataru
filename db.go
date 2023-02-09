@@ -55,7 +55,8 @@ func initSchema() error {
 	_, err = tx.Exec(ctx, `
 		create table if not exists bot.members (
 			member_id varchar(128) primary key not null,
-			member_name varchar(128) not null
+			member_name varchar(128) not null,
+			member_xiv_id varchar(128)
 		)
 	`)
 	if err != nil {
@@ -99,8 +100,9 @@ func isValidDatabase() (bool, error) {
 
 type MemberID string
 type Member struct {
-	id   MemberID
-	name string
+	id    MemberID
+	name  string
+	xivid *string
 }
 
 func getMembersFromDB() ([]*Member, error) {
@@ -112,7 +114,8 @@ func getMembersFromDB() ([]*Member, error) {
 	query := `
 		select
 			member_id,
-			member_name
+			member_name,
+			member_xiv_id
 		from bot.members
 		order by member_name
 	`
@@ -128,13 +131,15 @@ func getMembersFromDB() ([]*Member, error) {
 	for rows.Next() {
 		var memberID string
 		var membername string
-		err = rows.Scan(&memberID, &membername)
+		var xivid *string
+		err = rows.Scan(&memberID, &membername, &xivid)
 		if err != nil {
 			return nil, err
 		}
 		members = append(members, &Member{
-			id:   MemberID(memberID),
-			name: membername,
+			id:    MemberID(memberID),
+			name:  membername,
+			xivid: xivid,
 		})
 	}
 	return members, nil
