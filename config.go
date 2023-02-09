@@ -11,6 +11,7 @@ type Config struct {
 	MountSpreadsheetTitle          string
 	GoogleDriveDestinationFolderId string
 	DiscordToken                   string
+	XivapiApiKey                   string
 	DBUsername                     string
 	DBUserPassword                 string
 	DBIP                           string
@@ -32,6 +33,7 @@ func NewConfig(configFilepath string) (*Config, error) {
 		MountSpreadsheetTitle          string
 		GoogleDriveDestinationFolderId string
 		DiscordToken                   string
+		XivapiApiKey                   string
 		DBUsername                     string
 		DBUserPassword                 string
 		DBIP                           string
@@ -69,6 +71,7 @@ func NewConfig(configFilepath string) (*Config, error) {
 		MountSpreadsheetTitle:          rawConfig.MountSpreadsheetTitle,
 		GoogleDriveDestinationFolderId: rawConfig.GoogleDriveDestinationFolderId,
 		DiscordToken:                   rawConfig.DiscordToken,
+		XivapiApiKey:                   rawConfig.XivapiApiKey,
 		DBUsername:                     rawConfig.DBUsername,
 		DBUserPassword:                 rawConfig.DBUserPassword,
 		DBIP:                           rawConfig.DBIP,

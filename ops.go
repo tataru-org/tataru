@@ -2,9 +2,11 @@ package main
 
 import (
 	"strconv"
+	"time"
 
 	"github.com/disgoorg/disgo/discord"
 	"github.com/disgoorg/log"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"google.golang.org/api/drive/v3"
 	"google.golang.org/api/sheets/v4"
@@ -158,32 +160,6 @@ func buildFile(badFileExists bool) (*FileID, error) {
 					},
 				},
 				SheetId: int64(sheetMap[Expansion(sheetIndex)]),
-			},
-		})
-		requests = append(requests, &sheets.Request{
-			AddProtectedRange: &sheets.AddProtectedRangeRequest{
-				ProtectedRange: &sheets.ProtectedRange{
-					Range: &sheets.GridRange{
-						SheetId:       int64(sheetMap[Expansion(sheetIndex)]),
-						StartRowIndex: 0,
-						EndRowIndex:   1,
-					},
-					RequestingUserCanEdit: false,
-					WarningOnly:           false,
-				},
-			},
-		})
-		requests = append(requests, &sheets.Request{
-			AddProtectedRange: &sheets.AddProtectedRangeRequest{
-				ProtectedRange: &sheets.ProtectedRange{
-					Range: &sheets.GridRange{
-						SheetId:          int64(sheetMap[Expansion(sheetIndex)]),
-						StartColumnIndex: 0,
-						EndColumnIndex:   2,
-					},
-					RequestingUserCanEdit: false,
-					WarningOnly:           false,
-				},
 			},
 		})
 	}
@@ -352,12 +328,14 @@ func syncRoleMembers(id FileID, guildMembers []discord.Member) error {
 		}
 	}
 	if len(requests) != 0 {
-		googleSheetsWriteReqs <- &SheetBatchUpdate{
-			ID: spreadsheet.SpreadsheetId,
-			Batch: &sheets.BatchUpdateSpreadsheetRequest{
-				Requests: requests,
-			},
-		}
+		go func() {
+			googleSheetsWriteReqs <- &SheetBatchUpdate{
+				ID: spreadsheet.SpreadsheetId,
+				Batch: &sheets.BatchUpdateSpreadsheetRequest{
+					Requests: requests,
+				},
+			}
+		}()
 		log.Debug("members deleted from spreadsheet")
 	} else {
 		log.Debug("members not deleted from spreadsheet")
@@ -458,12 +436,14 @@ func syncRoleMembers(id FileID, guildMembers []discord.Member) error {
 		}
 	}
 	if len(requests) != 0 {
-		googleSheetsWriteReqs <- &SheetBatchUpdate{
-			ID: spreadsheet.SpreadsheetId,
-			Batch: &sheets.BatchUpdateSpreadsheetRequest{
-				Requests: requests,
-			},
-		}
+		go func() {
+			googleSheetsWriteReqs <- &SheetBatchUpdate{
+				ID: spreadsheet.SpreadsheetId,
+				Batch: &sheets.BatchUpdateSpreadsheetRequest{
+					Requests: requests,
+				},
+			}
+		}()
 		log.Debug("members added to spreadsheet")
 	} else {
 		log.Debug("members not added to spreadsheet")
@@ -489,4 +469,166 @@ func syncRoleMembers(id FileID, guildMembers []discord.Member) error {
 	err = tx.Commit(ctx)
 	log.Debugf("added %d members to db", len(addMembers))
 	return err
+}
+
+func xivMountScan() error {
+	dbcon, err := dbpool.Acquire(ctx)
+	if err != nil {
+		return err
+	}
+	defer dbcon.Release()
+	// get all members that have xiv character IDs and create requests
+	query := `
+			select
+				member_id,
+				member_name,
+				member_xiv_id
+			from bot.members
+			where member_xiv_id is not null
+			order by member_name
+			`
+	rows, err := dbcon.Query(
+		ctx,
+		query,
+	)
+	if err != nil {
+		return err
+	}
+	reqMap := map[string]XivCharacterRequest{}
+	requests := []XivCharacterRequest{}
+	for rows.Next() {
+		var memberID string
+		var membername string
+		var memberXivID string
+		err = rows.Scan(&memberID, &membername, &memberXivID)
+		if err != nil {
+			return err
+		}
+		req := XivCharacterRequest{
+			Token: uuid.New().String(),
+			XivID: memberXivID,
+			Data: []XivCharacterData{
+				XivCharacterDataMountsMinions,
+			},
+			Do: xivapiClient.GetCharacter,
+		}
+		reqMap[memberID] = req
+		requests = append(requests, req)
+	}
+	log.Debugf("# of character requests created: %d", len(requests))
+	if len(requests) == 0 {
+		return nil
+	}
+	// send requests and collect character profiles containing the mount data
+	log.Debug("sending requests")
+	xivCharProfiles, err := xivapiCollectCharacterResponses(requests)
+	log.Debug("character profiles collected")
+	if err != nil {
+		return err
+	}
+	if len(xivCharProfiles) == 0 {
+		return nil
+	}
+	// map discord user IDs to xiv character profiles
+	profileMap := map[string]XivCharacter{}
+	for i := 0; i < len(xivCharProfiles); i++ {
+		for discUserID, xivCharRequest := range reqMap {
+			if xivCharRequest.XivID == strconv.FormatUint(uint64(xivCharProfiles[i].Character.ID), 10) {
+				profileMap[discUserID] = xivCharProfiles[i]
+				break
+			}
+		}
+	}
+	// get the spreadsheet file id
+	var fileID string
+	row := dbcon.QueryRow(ctx, `select file_id from bot.file_ref`)
+	err = row.Scan(&fileID)
+	if err != nil {
+		return err
+	}
+	// get the spreadsheet with all file data
+	spreadsheet, err := gsheetsSvc.Spreadsheets.Get(fileID).IncludeGridData(true).Do()
+	if err != nil {
+		return err
+	}
+	// get the column format mapping
+	columnMap, err := NewColumnMap(mountSpreadsheetColumnDataFilepath)
+	if err != nil {
+		return err
+	}
+	// create sheets api requests to update values according
+	// to the mount list in the corresponding character profile
+	gapiRequests := []*sheets.Request{}
+	bossMountMap := getXivBossMountMapping()
+	for i := 0; i < len(spreadsheet.Sheets); i++ {
+		for memberID, charProfile := range profileMap {
+			for j := 1; j < len(spreadsheet.Sheets[i].Data[0].RowData); j++ {
+				row := spreadsheet.Sheets[i].Data[0].RowData[j]
+				curID := row.Values[0].EffectiveValue.StringValue
+				if *curID != memberID {
+					continue
+				}
+
+				vals := []*sheets.CellData{}
+				for k := 2; k < len(row.Values); k++ {
+					hasMount := false
+					bossName := columnMap.Mapping[SheetIndex(i)][ColumnIndex(k)].Name
+					for a := 0; a < len(charProfile.Mounts); a++ {
+						mountName := charProfile.Mounts[a].Name
+						if mountName == string(bossMountMap[BossName(bossName)]) {
+							hasMount = true
+							break
+						}
+					}
+					vals = append(vals, &sheets.CellData{
+						UserEnteredValue: &sheets.ExtendedValue{
+							BoolValue: &hasMount,
+						},
+					})
+				}
+
+				gapiRequests = append(gapiRequests, &sheets.Request{
+					UpdateCells: &sheets.UpdateCellsRequest{
+						Fields: "userEnteredValue",
+						Range: &sheets.GridRange{
+							SheetId:          spreadsheet.Sheets[i].Properties.SheetId,
+							StartRowIndex:    int64(j),
+							EndRowIndex:      int64(j + 1),
+							StartColumnIndex: 2,
+						},
+						Rows: []*sheets.RowData{
+							{
+								Values: vals,
+							},
+						},
+					},
+				})
+			}
+		}
+	}
+	if len(gapiRequests) > 0 {
+		// send the batch request
+		go func() {
+			googleSheetsWriteReqs <- &SheetBatchUpdate{
+				ID: spreadsheet.SpreadsheetId,
+				Batch: &sheets.BatchUpdateSpreadsheetRequest{
+					Requests: gapiRequests,
+				},
+			}
+		}()
+		log.Debug("Mounts in spreadsheet successfully updated")
+	} else {
+		log.Debug("Nothing to update")
+	}
+	return nil
+}
+
+func scanForMounts() {
+	for {
+		err := xivMountScan()
+		if err != nil {
+			log.Error(err)
+		}
+		<-time.After(xivapiMountScanSleepDuration)
+	}
 }

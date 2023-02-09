@@ -3,11 +3,13 @@ package main
 import (
 	"fmt"
 	"runtime/debug"
+	"strconv"
 	"strings"
 
 	"github.com/disgoorg/disgo/discord"
 	"github.com/disgoorg/disgo/events"
 	"github.com/disgoorg/log"
+	"github.com/google/uuid"
 	"google.golang.org/api/drive/v3"
 	"google.golang.org/api/sheets/v4"
 )
@@ -604,5 +606,210 @@ func syncFilePermsHandler(event *events.ApplicationCommandInteractionCreate) {
 		log.Error(err)
 		log.Error(debug.Stack())
 		return
+	}
+}
+
+func tryXivCharacterSearchHandler(event *events.ApplicationCommandInteractionCreate) {
+	eventData := event.SlashCommandInteractionData()
+	if eventData.CommandName() != "try_xiv_char_search" {
+		return
+	}
+
+	err := event.DeferCreateMessage(true)
+	if err != nil {
+		log.Error(err)
+		log.Error(debug.Stack())
+		return
+	}
+	xivCharName := eventData.String("xiv_character_name")
+	xivDiscUser := eventData.User("discord_user")
+	searchResponses, err := xivapiCollectCharacterSearchResponses([]XivCharacterSearchRequest{
+		{
+			Token: uuid.New().String(),
+			Name:  xivCharName,
+			Params: []XivApiQueryParam{
+				{
+					Name:  "server",
+					Value: "Behemoth",
+				},
+			},
+			Do: xivapiClient.SearchForCharacter,
+		},
+	})
+	if err != nil {
+		log.Error(err)
+		log.Error(debug.Stack())
+		return
+	}
+	if len(searchResponses) == 0 {
+		content := "No matching search results were found"
+		_, err = event.Client().Rest().UpdateInteractionResponse(
+			event.ApplicationID(),
+			event.Token(),
+			discord.MessageUpdate{
+				Content: &content,
+			},
+		)
+		if err != nil {
+			log.Error(err)
+			log.Error(debug.Stack())
+			return
+		}
+		return
+	}
+	// discord ID -> xiv character ID
+	var xivCharID *string = nil
+	charSearch := searchResponses[0]
+	for j := 0; j < len(charSearch.Results); j++ {
+		if charSearch.Results[j].Name == xivCharName {
+			s := strconv.FormatUint(uint64(charSearch.Results[j].ID), 10)
+			xivCharID = &s
+			break
+		}
+	}
+	if xivCharID == nil {
+		content := "No matching search results were found"
+		_, err = event.Client().Rest().UpdateInteractionResponse(
+			event.ApplicationID(),
+			event.Token(),
+			discord.MessageUpdate{
+				Content: &content,
+			},
+		)
+		if err != nil {
+			log.Error(err)
+			log.Error(debug.Stack())
+			return
+		}
+		return
+	}
+
+	dbcon, err := dbpool.Acquire(ctx)
+	if err != nil {
+		log.Error(err)
+		log.Error(debug.Stack())
+		return
+	}
+	defer dbcon.Release()
+	_, err = dbcon.Exec(ctx, `update bot.members set member_xiv_id=$1 where member_id=$2`, *xivCharID, xivDiscUser.ID.String())
+	if err != nil {
+		log.Error(err)
+		log.Error(debug.Stack())
+		return
+	}
+	content := fmt.Sprintf("Character ID %s was found with character name %s for discord user %s", *xivCharID, xivCharName, xivDiscUser.ID.String())
+	_, err = event.Client().Rest().UpdateInteractionResponse(
+		event.ApplicationID(),
+		event.Token(),
+		discord.MessageUpdate{
+			Content: &content,
+		},
+	)
+	if err != nil {
+		log.Error(err)
+		log.Error(debug.Stack())
+	}
+}
+
+func mapXivCharIDHandler(event *events.ApplicationCommandInteractionCreate) {
+	eventData := event.SlashCommandInteractionData()
+	if eventData.CommandName() != "map_xiv_char_id" {
+		return
+	}
+
+	err := event.DeferCreateMessage(true)
+	if err != nil {
+		log.Error(err)
+		log.Error(debug.Stack())
+		return
+	}
+	xivCharID := eventData.String("xiv_character_id")
+	xivDiscUser := eventData.User("discord_user")
+	resps, err := xivapiCollectCharacterResponses([]XivCharacterRequest{
+		{
+			Token: uuid.New().String(),
+			XivID: xivCharID,
+			Data:  nil,
+			Do:    xivapiClient.GetCharacter,
+		},
+	})
+	if err != nil {
+		log.Error(err)
+		log.Error(debug.Stack())
+		return
+	}
+	if len(resps) == 0 {
+		content := fmt.Sprintf("No matching character was found for character ID %s", xivCharID)
+		_, err = event.Client().Rest().UpdateInteractionResponse(
+			event.ApplicationID(),
+			event.Token(),
+			discord.MessageUpdate{
+				Content: &content,
+			},
+		)
+		if err != nil {
+			log.Error(err)
+			log.Error(debug.Stack())
+			return
+		}
+		return
+	}
+	dbcon, err := dbpool.Acquire(ctx)
+	if err != nil {
+		log.Error(err)
+		log.Error(debug.Stack())
+		return
+	}
+	defer dbcon.Release()
+	_, err = dbcon.Exec(ctx, `update bot.members set member_xiv_id=$1 where member_id=$2`, xivCharID, xivDiscUser.ID.String())
+	if err != nil {
+		log.Error(err)
+		log.Error(debug.Stack())
+		return
+	}
+	dbcon.Release()
+	content := fmt.Sprintf("Character ID %s was found for discord user %s", xivCharID, xivDiscUser.ID.String())
+	_, err = event.Client().Rest().UpdateInteractionResponse(
+		event.ApplicationID(),
+		event.Token(),
+		discord.MessageUpdate{
+			Content: &content,
+		},
+	)
+	if err != nil {
+		log.Error(err)
+		log.Error(debug.Stack())
+	}
+}
+
+func forceScanXivMountsHandler(event *events.ApplicationCommandInteractionCreate) {
+	eventData := event.SlashCommandInteractionData()
+	if eventData.CommandName() != "force_scan_xiv_mounts" {
+		return
+	}
+
+	err := event.DeferCreateMessage(true)
+	if err != nil {
+		log.Error(err)
+		log.Error(debug.Stack())
+		return
+	}
+	err = xivMountScan()
+	if err != nil {
+		log.Error(err)
+		log.Error(debug.Stack())
+		return
+	}
+	content := "Force mount scan completed"
+	_, err = event.Client().Rest().UpdateInteractionResponse(
+		event.ApplicationID(),
+		event.Token(),
+		discord.MessageUpdate{
+			Content: &content,
+		},
+	)
+	if err != nil {
+		log.Error(err)
+		log.Error(debug.Stack())
 	}
 }
