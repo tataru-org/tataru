@@ -49,7 +49,6 @@ var (
 var (
 	xivapiCharacterScanSleepDuration = time.Duration(3600) * time.Second
 	xivapiMountScanSleepDuration     = time.Duration(3600/2) * time.Second
-	discordNicknameScanSleepDuration = time.Duration(60*5) * time.Second
 )
 
 var (
