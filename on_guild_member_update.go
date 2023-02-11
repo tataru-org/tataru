@@ -41,15 +41,19 @@ func onGuildMemberUpdateHandler(event *events.GuildMemberUpdate) {
 	for i := 0; i < len(event.OldMember.RoleIDs); i++ {
 		if event.OldMember.RoleIDs[i].String() == *roleID {
 			oldMemberHasRole = true
+			break
 		}
 	}
 	newMemberHasRole := false
 	for i := 0; i < len(event.Member.RoleIDs); i++ {
 		if event.Member.RoleIDs[i].String() == *roleID {
 			newMemberHasRole = true
+			break
 		}
 	}
-	if oldMemberHasRole && newMemberHasRole {
+	roleHasUpdated := !(oldMemberHasRole && newMemberHasRole)
+	nickHasUpdated := event.OldMember.Nick != event.Member.Nick
+	if !roleHasUpdated && !nickHasUpdated {
 		return
 	}
 
@@ -94,111 +98,174 @@ func onGuildMemberUpdateHandler(event *events.GuildMemberUpdate) {
 	} else {
 		username = *event.Member.Nick
 	}
-	if !oldMemberHasRole && newMemberHasRole {
-		// add the member to the spreadsheet
-		requests := make([]*sheets.Request, len(spreadsheet.Sheets))
-		for i := 0; i < len(spreadsheet.Sheets); i++ {
-			vals := []*sheets.CellData{
-				{
-					UserEnteredValue: &sheets.ExtendedValue{
-						StringValue: &userID,
+	if roleHasUpdated {
+		if !oldMemberHasRole && newMemberHasRole {
+			// add the member to the spreadsheet
+			requests := make([]*sheets.Request, len(spreadsheet.Sheets))
+			for i := 0; i < len(spreadsheet.Sheets); i++ {
+				vals := []*sheets.CellData{
+					{
+						UserEnteredValue: &sheets.ExtendedValue{
+							StringValue: &userID,
+						},
+						UserEnteredFormat: columnMap.Mapping[SheetIndex(i)][0].ColumnFormat,
 					},
-					UserEnteredFormat: columnMap.Mapping[SheetIndex(i)][0].ColumnFormat,
-				},
-				{
-					UserEnteredValue: &sheets.ExtendedValue{
-						StringValue: &username,
+					{
+						UserEnteredValue: &sheets.ExtendedValue{
+							StringValue: &username,
+						},
+						UserEnteredFormat: columnMap.Mapping[SheetIndex(i)][1].ColumnFormat,
 					},
-					UserEnteredFormat: columnMap.Mapping[SheetIndex(i)][1].ColumnFormat,
-				},
+				}
+				boolVal := false
+				numColumns := len(columnMap.Mapping[SheetIndex(i)])
+				for k := 0; k < numColumns-2; k++ {
+					vals = append(vals, &sheets.CellData{
+						UserEnteredFormat: columnMap.Mapping[SheetIndex(i)][ColumnIndex(k+2)].ColumnFormat,
+						UserEnteredValue: &sheets.ExtendedValue{
+							BoolValue: &boolVal,
+						},
+						DataValidation: &sheets.DataValidationRule{
+							Condition: &sheets.BooleanCondition{
+								Type: "BOOLEAN",
+							},
+						},
+					})
+				}
+				requests[i] = &sheets.Request{
+					AppendCells: &sheets.AppendCellsRequest{
+						Fields:  "*",
+						SheetId: spreadsheet.Sheets[i].Properties.SheetId,
+						Rows: []*sheets.RowData{
+							{
+								Values: vals,
+							},
+						},
+					},
+				}
 			}
-			boolVal := false
-			numColumns := len(columnMap.Mapping[SheetIndex(i)])
-			for k := 0; k < numColumns-2; k++ {
-				vals = append(vals, &sheets.CellData{
-					UserEnteredFormat: columnMap.Mapping[SheetIndex(i)][ColumnIndex(k+2)].ColumnFormat,
-					UserEnteredValue: &sheets.ExtendedValue{
-						BoolValue: &boolVal,
+			if len(requests) > 0 {
+				go func() {
+					googleSheetsWriteReqs <- &SheetBatchUpdate{
+						ID: spreadsheet.SpreadsheetId,
+						Batch: &sheets.BatchUpdateSpreadsheetRequest{
+							Requests: requests,
+						},
+					}
+				}()
+				log.Debugf("member %s (id:%s) added to spreadsheet", username, userID)
+
+				_, err = dbcon.Exec(ctx, `insert into bot.members(member_id,member_name) values($1,$2)`, userID, username)
+				if err != nil {
+					log.Error(err)
+					log.Error(debug.Stack())
+					return
+				}
+				log.Debugf("member %s (id:%s) added to db", username, userID)
+			}
+		} else {
+			// delete the member from the spreadsheet
+
+			// map the row indices of each member to delete
+			var rowIndex *int64 = nil
+			testSheet := spreadsheet.Sheets[0]
+			numRows := len(testSheet.Data[0].RowData) - 1
+			for j := 0; j < numRows; j++ {
+				index := int64(j + 1)
+				row := testSheet.Data[0].RowData[index]
+				if *row.Values[0].EffectiveValue.StringValue == userID {
+					rowIndex = &index
+					break
+				}
+			}
+			log.Debug("mapped row indices of member to delete")
+
+			// delete the members' rows in the spreadsheet
+			requests := make([]*sheets.Request, len(spreadsheet.Sheets))
+			for i := 0; i < len(spreadsheet.Sheets); i++ {
+				requests[i] = &sheets.Request{
+					DeleteRange: &sheets.DeleteRangeRequest{
+						Range: &sheets.GridRange{
+							StartRowIndex: *rowIndex,
+							EndRowIndex:   *rowIndex + 1,
+							SheetId:       spreadsheet.Sheets[i].Properties.SheetId,
+						},
+						ShiftDimension: "ROWS",
 					},
-					DataValidation: &sheets.DataValidationRule{
-						Condition: &sheets.BooleanCondition{
-							Type: "BOOLEAN",
+				}
+			}
+			if len(requests) > 0 {
+				go func() {
+					googleSheetsWriteReqs <- &SheetBatchUpdate{
+						ID: spreadsheet.SpreadsheetId,
+						Batch: &sheets.BatchUpdateSpreadsheetRequest{
+							Requests: requests,
+						},
+					}
+				}()
+				log.Debugf("member %s (id:%s) deleted from spreadsheet", username, userID)
+
+				_, err = dbcon.Exec(ctx, `delete from bot.members where member_id=$1`, userID)
+				if err != nil {
+					log.Error(err)
+					log.Error(debug.Stack())
+					return
+				}
+				log.Debugf("member %s (id:%s) deleted from db", username, userID)
+			}
+		}
+	}
+	if nickHasUpdated && !roleHasUpdated {
+		// update the member name in the spreadsheet
+		requests := []*sheets.Request{}
+		for i := 0; i < len(spreadsheet.Sheets); i++ {
+			for j := 0; j < len(spreadsheet.Sheets[i].Data[0].RowData); j++ {
+				row := spreadsheet.Sheets[i].Data[0].RowData[j]
+				if *row.Values[0].EffectiveValue.StringValue != userID {
+					continue
+				}
+				requests = append(requests, &sheets.Request{
+					UpdateCells: &sheets.UpdateCellsRequest{
+						Fields: "userEnteredValue",
+						Range: &sheets.GridRange{
+							SheetId:          int64(spreadsheet.Sheets[i].Properties.SheetId),
+							StartRowIndex:    int64(j),
+							EndRowIndex:      int64(j + 1),
+							StartColumnIndex: 1,
+							EndColumnIndex:   2,
+						},
+						Rows: []*sheets.RowData{
+							{
+								Values: []*sheets.CellData{
+									{
+										UserEnteredValue: &sheets.ExtendedValue{
+											StringValue: &username,
+										},
+									},
+								},
+							},
 						},
 					},
 				})
-			}
-			requests[i] = &sheets.Request{
-				AppendCells: &sheets.AppendCellsRequest{
-					Fields:  "*",
-					SheetId: spreadsheet.Sheets[i].Properties.SheetId,
-					Rows: []*sheets.RowData{
-						{
-							Values: vals,
-						},
-					},
-				},
-			}
-		}
-		googleSheetsWriteReqs <- &SheetBatchUpdate{
-			ID: spreadsheet.SpreadsheetId,
-			Batch: &sheets.BatchUpdateSpreadsheetRequest{
-				Requests: requests,
-			},
-		}
-		log.Debugf("member %s (id:%s) added to spreadsheet", username, userID)
-
-		_, err = dbcon.Exec(ctx, `insert into bot.members(member_id,member_name) values($1,$2)`, userID, username)
-		if err != nil {
-			log.Error(err)
-			log.Error(debug.Stack())
-			return
-		}
-		log.Debugf("member %s (id:%s) added to db", username, userID)
-	} else {
-		// delete the member from the spreadsheet
-
-		// map the row indices of each member to delete
-		var rowIndex *int64 = nil
-		testSheet := spreadsheet.Sheets[0]
-		numRows := len(testSheet.Data[0].RowData) - 1
-		for j := 0; j < numRows; j++ {
-			index := int64(j + 1)
-			row := testSheet.Data[0].RowData[index]
-			if *row.Values[0].EffectiveValue.StringValue == userID {
-				rowIndex = &index
 				break
 			}
 		}
-		log.Debug("mapped row indices of member to delete")
-
-		// delete the members' rows in the spreadsheet
-		requests := make([]*sheets.Request, len(spreadsheet.Sheets))
-		for i := 0; i < len(spreadsheet.Sheets); i++ {
-			requests[i] = &sheets.Request{
-				DeleteRange: &sheets.DeleteRangeRequest{
-					Range: &sheets.GridRange{
-						StartRowIndex: *rowIndex,
-						EndRowIndex:   *rowIndex + 1,
-						SheetId:       spreadsheet.Sheets[i].Properties.SheetId,
+		if len(requests) > 0 {
+			go func() {
+				googleSheetsWriteReqs <- &SheetBatchUpdate{
+					ID: spreadsheet.SpreadsheetId,
+					Batch: &sheets.BatchUpdateSpreadsheetRequest{
+						Requests: requests,
 					},
-					ShiftDimension: "ROWS",
-				},
+				}
+			}()
+
+			_, err = dbcon.Exec(ctx, `update bot.members set member_name=$1 where member_id=$2`, username, userID)
+			if err != nil {
+				log.Error(err)
+				log.Error(debug.Stack())
+				return
 			}
 		}
-		googleSheetsWriteReqs <- &SheetBatchUpdate{
-			ID: spreadsheet.SpreadsheetId,
-			Batch: &sheets.BatchUpdateSpreadsheetRequest{
-				Requests: requests,
-			},
-		}
-		log.Debugf("member %s (id:%s) deleted from spreadsheet", username, userID)
-
-		_, err = dbcon.Exec(ctx, `delete from bot.members where member_id=$1`, userID)
-		if err != nil {
-			log.Error(err)
-			log.Error(debug.Stack())
-			return
-		}
-		log.Debugf("member %s (id:%s) deleted from db", username, userID)
 	}
 }

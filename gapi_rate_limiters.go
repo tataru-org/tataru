@@ -49,22 +49,24 @@ func googleSheetBatchUpdateRateLimiter(rateLimit, maxRetryDuration float64, reqs
 		waitDur := CalcWaitDuration(rateLimit)
 		req := <-reqs
 		resp, err := gsheetsSvc.Spreadsheets.BatchUpdate(req.ID, req.Batch).Do()
-		log.Debugf("google sheets batch update response HTTP status code: %d", resp.HTTPStatusCode)
-		if resp.HTTPStatusCode == 429 {
-			durStr := resp.Header.Get("Retry-After")
-			var initWait float64
-			hasSuggestedRetryDur := false
-			if durStr == "" {
-				initWait = waitDur
-			} else {
-				initWait, err = strconv.ParseFloat(durStr, 64)
-				if err != nil {
-					log.Error(err)
-					continue
+		if resp != nil {
+			log.Debugf("google sheets batch update response HTTP status code: %d", resp.HTTPStatusCode)
+			if resp.HTTPStatusCode == 429 {
+				durStr := resp.Header.Get("Retry-After")
+				var initWait float64
+				hasSuggestedRetryDur := false
+				if durStr == "" {
+					initWait = waitDur
+				} else {
+					initWait, err = strconv.ParseFloat(durStr, 64)
+					if err != nil {
+						log.Error(err)
+						continue
+					}
+					hasSuggestedRetryDur = true
 				}
-				hasSuggestedRetryDur = true
+				RetrySheetBatchUpdate(req, initWait, 3600, hasSuggestedRetryDur)
 			}
-			RetrySheetBatchUpdate(req, initWait, 3600, hasSuggestedRetryDur)
 		}
 		if err != nil {
 			log.Error(err)

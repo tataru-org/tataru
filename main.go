@@ -11,6 +11,7 @@ import (
 
 	"github.com/disgoorg/disgo"
 	"github.com/disgoorg/disgo/bot"
+	"github.com/disgoorg/disgo/cache"
 	"github.com/disgoorg/disgo/events"
 	"github.com/disgoorg/disgo/gateway"
 	"github.com/disgoorg/log"
@@ -48,6 +49,7 @@ var (
 var (
 	xivapiCharacterScanSleepDuration = time.Duration(3600) * time.Second
 	xivapiMountScanSleepDuration     = time.Duration(3600/2) * time.Second
+	discordNicknameScanSleepDuration = time.Duration(60*5) * time.Second
 )
 
 var (
@@ -143,6 +145,7 @@ func main() {
 				gateway.IntentGuildMembers,
 				gateway.IntentGuildMessages,
 				gateway.IntentMessageContent,
+				gateway.IntentGuildPresences,
 			),
 		),
 		bot.WithEventListenerFunc(onReadyHandler),
@@ -156,6 +159,8 @@ func main() {
 		bot.WithEventListenerFunc(tryXivCharacterSearchHandler),
 		bot.WithEventListenerFunc(mapXivCharIDHandler),
 		bot.WithEventListenerFunc(forceScanXivMountsHandler),
+		bot.WithEventListenerFunc(forceUpdateMemberNamesHandler),
+		bot.WithCacheConfigOpts(cache.WithCaches(cache.FlagMembers)),
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -176,11 +181,6 @@ func main() {
 		return
 	}
 	log.Debug("bot initialized")
-
-	go googleSheetBatchUpdateRateLimiter(googleSheetsWriteRateLimit, maxRetryDuration, googleSheetsWriteReqs)
-	go xivApiLodestoneRequestRateLimiter(xivapiLodestoneRateLimit, maxRetryDuration, xivapiLodestoneReqs, xivapiLodestoneResps, xivapiLodestoneReqTokens)
-	go xivapiScanForCharacterIDs()
-	go scanForMounts()
 
 	s := make(chan os.Signal, 1)
 	signal.Notify(s, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)

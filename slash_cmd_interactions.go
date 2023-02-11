@@ -813,3 +813,42 @@ func forceScanXivMountsHandler(event *events.ApplicationCommandInteractionCreate
 		log.Error(debug.Stack())
 	}
 }
+
+func forceUpdateMemberNamesHandler(event *events.ApplicationCommandInteractionCreate) {
+	eventData := event.SlashCommandInteractionData()
+	if eventData.CommandName() != "force_update_member_names" {
+		return
+	}
+
+	err := event.DeferCreateMessage(true)
+	if err != nil {
+		log.Error(err)
+		log.Error(debug.Stack())
+		return
+	}
+	// get all members from discord
+	discMembers, err := event.Client().Rest().GetMembers(*event.GuildID(), guildMemberCountRequestLimit, nullSnowflake)
+	if err != nil {
+		log.Error(err)
+		log.Error(debug.Stack())
+		return
+	}
+	err = discordNicknameScan(discMembers)
+	if err != nil {
+		log.Error(err)
+		log.Error(debug.Stack())
+		return
+	}
+	content := "Names updated in spreadsheet"
+	_, err = event.Client().Rest().UpdateInteractionResponse(
+		event.ApplicationID(),
+		event.Token(),
+		discord.MessageUpdate{
+			Content: &content,
+		},
+	)
+	if err != nil {
+		log.Error(err)
+		log.Error(debug.Stack())
+	}
+}
