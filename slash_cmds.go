@@ -79,5 +79,10 @@ func createSlashCommands() []discord.ApplicationCommandCreate {
 			Description:              "Force scans XIVAPI for mounts",
 			DefaultMemberPermissions: &adminPerm,
 		},
+		discord.SlashCommandCreate{
+			Name:                     "force_update_member_names",
+			Description:              "Force updates member names",
+			DefaultMemberPermissions: &adminPerm,
+		},
 	}
 }

@@ -108,4 +108,10 @@ func onGuildReady(event *events.GuildReady) {
 		return
 	}
 	log.Debug("sync successfully completed")
+	go googleSheetBatchUpdateRateLimiter(googleSheetsWriteRateLimit, maxRetryDuration, googleSheetsWriteReqs)
+	go xivApiLodestoneRequestRateLimiter(xivapiLodestoneRateLimit, maxRetryDuration, xivapiLodestoneReqs, xivapiLodestoneResps, xivapiLodestoneReqTokens)
+	go xivapiScanForCharacterIDs()
+	go scanForMounts()
+	go scanDiscordNicknames(event.Client(), event.GuildID)
+	log.Debug("routines launched")
 }

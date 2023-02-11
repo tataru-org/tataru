@@ -1,11 +1,14 @@
 package main
 
 import (
+	"runtime/debug"
 	"strconv"
 	"time"
 
+	"github.com/disgoorg/disgo/bot"
 	"github.com/disgoorg/disgo/discord"
 	"github.com/disgoorg/log"
+	"github.com/disgoorg/snowflake/v2"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"google.golang.org/api/drive/v3"
@@ -630,5 +633,128 @@ func scanForMounts() {
 			log.Error(err)
 		}
 		<-time.After(xivapiMountScanSleepDuration)
+	}
+}
+
+func discordNicknameScan(discMembers []discord.Member) error {
+	dbcon, err := dbpool.Acquire(ctx)
+	if err != nil {
+		return err
+	}
+	defer dbcon.Release()
+	// get file id
+	var fileID string
+	row := dbcon.QueryRow(ctx, `select file_id from bot.file_ref`)
+	err = row.Scan(&fileID)
+	if err != nil {
+		return err
+	}
+	// get all members in db
+	dbMembers, err := getMembersFromDB()
+	if err != nil {
+		return err
+	}
+	// map discord ID to current member nickname
+	memberMap := map[string]string{}
+	for i := 0; i < len(dbMembers); i++ {
+		for j := 0; j < len(discMembers); j++ {
+			if string(dbMembers[i].id) != discMembers[j].User.ID.String() {
+				continue
+			}
+			var username string
+			if discMembers[j].Nick == nil {
+				username = discMembers[j].User.Username
+			} else {
+				username = *discMembers[j].Nick
+			}
+			memberMap[string(dbMembers[i].id)] = username
+			break
+		}
+	}
+	spreadsheet, err := gsheetsSvc.Spreadsheets.Get(fileID).IncludeGridData(true).Do()
+	if err != nil {
+		return err
+	}
+	// update all member names in the spreadsheet
+	requests := []*sheets.Request{}
+	for i := 0; i < len(spreadsheet.Sheets); i++ {
+		for j := 0; j < len(spreadsheet.Sheets[i].Data[0].RowData); j++ {
+			for userID, userName := range memberMap {
+				row := spreadsheet.Sheets[i].Data[0].RowData[j]
+				if *row.Values[0].EffectiveValue.StringValue != userID {
+					continue
+				}
+				if *row.Values[1].EffectiveValue.StringValue == userName {
+					break
+				}
+				requests = append(requests, &sheets.Request{
+					UpdateCells: &sheets.UpdateCellsRequest{
+						Fields: "userEnteredValue",
+						Range: &sheets.GridRange{
+							SheetId:          int64(spreadsheet.Sheets[i].Properties.SheetId),
+							StartRowIndex:    int64(j),
+							EndRowIndex:      int64(j + 1),
+							StartColumnIndex: 1,
+							EndColumnIndex:   2,
+						},
+						Rows: []*sheets.RowData{
+							{
+								Values: []*sheets.CellData{
+									{
+										UserEnteredValue: &sheets.ExtendedValue{
+											StringValue: &userName,
+										},
+									},
+								},
+							},
+						},
+					},
+				})
+				break
+			}
+		}
+	}
+	// update in database
+	if len(requests) > 0 {
+		go func() {
+			googleSheetsWriteReqs <- &SheetBatchUpdate{
+				ID: spreadsheet.SpreadsheetId,
+				Batch: &sheets.BatchUpdateSpreadsheetRequest{
+					Requests: requests,
+				},
+			}
+		}()
+
+		tx, err := dbcon.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		for userID, userName := range memberMap {
+			_, err = tx.Exec(ctx, `update bot.members set member_name=$1 where member_id=$2`, userName, userID)
+			if err != nil {
+				return err
+			}
+		}
+		err = tx.Commit(ctx)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func scanDiscordNicknames(client bot.Client, guildID snowflake.ID) {
+	for {
+		discMembers, err := client.Rest().GetMembers(guildID, guildMemberCountRequestLimit, nullSnowflake)
+		if err != nil {
+			log.Error(err)
+			log.Error(debug.Stack())
+			<-time.After(discordNicknameScanSleepDuration)
+		}
+		err = discordNicknameScan(discMembers)
+		if err != nil {
+			log.Error(err)
+		}
+		<-time.After(discordNicknameScanSleepDuration)
 	}
 }
