@@ -107,11 +107,16 @@ func onGuildReady(event *events.GuildReady) {
 		log.Error(debug.Stack())
 		return
 	}
+	err = discordNicknameScan(members)
+	if err != nil {
+		log.Error(err)
+		log.Error(debug.Stack())
+		return
+	}
 	log.Debug("sync successfully completed")
 	go googleSheetBatchUpdateRateLimiter(googleSheetsWriteRateLimit, maxRetryDuration, googleSheetsWriteReqs)
 	go xivApiLodestoneRequestRateLimiter(xivapiLodestoneRateLimit, maxRetryDuration, xivapiLodestoneReqs, xivapiLodestoneResps, xivapiLodestoneReqTokens)
 	go xivapiScanForCharacterIDs()
 	go scanForMounts()
-	go scanDiscordNicknames(event.Client(), event.GuildID)
 	log.Debug("routines launched")
 }
