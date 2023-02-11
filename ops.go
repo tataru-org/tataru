@@ -1,14 +1,11 @@
 package main
 
 import (
-	"runtime/debug"
 	"strconv"
 	"time"
 
-	"github.com/disgoorg/disgo/bot"
 	"github.com/disgoorg/disgo/discord"
 	"github.com/disgoorg/log"
-	"github.com/disgoorg/snowflake/v2"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"google.golang.org/api/drive/v3"
@@ -141,7 +138,7 @@ func buildFile(badFileExists bool) (*FileID, error) {
 		sheetMap[exp] = SheetID(sheet.Properties.SheetId)
 	}
 
-	// add the header row to each sheet & add protected ranges
+	// add the header row to each sheet
 	requests = []*sheets.Request{}
 	for sheetIndex, columnIndexMap := range columnMap.Mapping {
 		numColumns := len(columnIndexMap)
@@ -175,6 +172,7 @@ func buildFile(badFileExists bool) (*FileID, error) {
 			Fields: "index,sheetId",
 		},
 	})
+	// intentional execution blocking
 	googleSheetsWriteReqs <- &SheetBatchUpdate{
 		ID: spreadsheet.SpreadsheetId,
 		Batch: &sheets.BatchUpdateSpreadsheetRequest{
@@ -263,6 +261,10 @@ func syncRoleMembers(id FileID, guildMembers []discord.Member) error {
 	// filter out members without the watched role id
 	roleMembers := []discord.Member{}
 	for i := 0; i < len(guildMembers); i++ {
+		if guildMembers[i].User.Bot {
+			continue
+		}
+
 		for j := 0; j < len(guildMembers[i].RoleIDs); j++ {
 			if guildMembers[i].RoleIDs[j].String() == *roleID {
 				roleMembers = append(roleMembers, guildMembers[i])
@@ -658,7 +660,7 @@ func discordNicknameScan(discMembers []discord.Member) error {
 	memberMap := map[string]string{}
 	for i := 0; i < len(dbMembers); i++ {
 		for j := 0; j < len(discMembers); j++ {
-			if string(dbMembers[i].id) != discMembers[j].User.ID.String() {
+			if string(dbMembers[i].id) != discMembers[j].User.ID.String() || discMembers[j].User.Bot {
 				continue
 			}
 			var username string
@@ -741,20 +743,4 @@ func discordNicknameScan(discMembers []discord.Member) error {
 		}
 	}
 	return nil
-}
-
-func scanDiscordNicknames(client bot.Client, guildID snowflake.ID) {
-	for {
-		discMembers, err := client.Rest().GetMembers(guildID, guildMemberCountRequestLimit, nullSnowflake)
-		if err != nil {
-			log.Error(err)
-			log.Error(debug.Stack())
-			<-time.After(discordNicknameScanSleepDuration)
-		}
-		err = discordNicknameScan(discMembers)
-		if err != nil {
-			log.Error(err)
-		}
-		<-time.After(discordNicknameScanSleepDuration)
-	}
 }
