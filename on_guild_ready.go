@@ -1,8 +1,6 @@
 package main
 
 import (
-	"runtime/debug"
-
 	"github.com/disgoorg/disgo/events"
 	"github.com/disgoorg/log"
 )
@@ -11,24 +9,21 @@ func onGuildReady(event *events.GuildReady) {
 	dbcon, err := dbpool.Acquire(ctx)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 	defer dbcon.Release()
 	isValidDb, err := isValidDatabase()
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 	if isValidDb {
 		log.Debug("schema is valid")
 	} else {
 		log.Debug("schema is invalid")
-		err := initSchema()
+		err := initDB()
 		if err != nil {
 			log.Error(err)
-			log.Error(debug.Stack())
 			return
 		}
 		log.Debug("schema initialized")
@@ -38,14 +33,15 @@ func onGuildReady(event *events.GuildReady) {
 	var fileRefExists bool
 	row := dbcon.QueryRow(
 		ctx,
-		"select exists(select file_id from bot.file_ref)",
+		"select exists(select file_gcp_id from bot.file_ref)",
 	)
 	err = row.Scan(&fileRefExists)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
+
+	go googleSheetBatchUpdateRateLimiter(googleSheetsWriteRateLimit, maxRetryDuration, googleSheetsWriteReqs)
 
 	var fileID *FileID
 	if fileRefExists {
@@ -53,18 +49,16 @@ func onGuildReady(event *events.GuildReady) {
 		// check if the file exists in google drive
 		row := dbcon.QueryRow(
 			ctx,
-			"select file_id from bot.file_ref",
+			"select file_gcp_id from bot.file_ref",
 		)
 		err = row.Scan(&fileIDStr)
 		if err != nil {
 			log.Error(err)
-			log.Error(debug.Stack())
 			return
 		}
 		exists, err := fileExists(FileID(fileIDStr))
 		if err != nil {
 			log.Error(err)
-			log.Error(debug.Stack())
 			return
 		}
 		dbcon.Release()
@@ -74,7 +68,6 @@ func onGuildReady(event *events.GuildReady) {
 			fileID, err = buildFile(false)
 			if err != nil {
 				log.Error(err)
-				log.Error(debug.Stack())
 				return
 			}
 			log.Debug("file built")
@@ -88,7 +81,6 @@ func onGuildReady(event *events.GuildReady) {
 		fileID, err = buildFile(false)
 		if err != nil {
 			log.Error(err)
-			log.Error(debug.Stack())
 			return
 		}
 		log.Debug("file built")
@@ -98,23 +90,19 @@ func onGuildReady(event *events.GuildReady) {
 	members, err := event.Client().Rest().GetMembers(event.GuildID, guildMemberCountRequestLimit, nullSnowflake)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 	err = syncRoleMembers(*fileID, members)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 	err = discordNicknameScan(members)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 	log.Debug("sync successfully completed")
-	go googleSheetBatchUpdateRateLimiter(googleSheetsWriteRateLimit, maxRetryDuration, googleSheetsWriteReqs)
 	go xivApiLodestoneRequestRateLimiter(xivapiLodestoneRateLimit, maxRetryDuration, xivapiLodestoneReqs, xivapiLodestoneResps, xivapiLodestoneReqTokens)
 	go xivapiScanForCharacterIDs()
 	go scanForMounts()

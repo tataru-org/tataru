@@ -1,4 +1,4 @@
-module test
+module tataru
 
 go 1.18
 

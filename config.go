@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 )
 
@@ -23,7 +24,7 @@ type Config struct {
 func NewConfig(configFilepath string) (*Config, error) {
 	configFile, err := os.Open(configFilepath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("os.Open() error: [%w]", err)
 	}
 	defer configFile.Close()
 
@@ -43,7 +44,7 @@ func NewConfig(configFilepath string) (*Config, error) {
 	}{}
 	err = json.NewDecoder(configFile).Decode(&rawConfig)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("json.NewDecoder().Decode() error: [%w]", err)
 	}
 
 	var lvl uint32

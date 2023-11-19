@@ -1,5 +1,8 @@
 *
 
+!initial-db-data/
+!initial-db-data/**
+
 !.gitignore
 !go.sum
 !go.mod
