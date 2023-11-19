@@ -48,7 +48,7 @@ stable-deploy:
   image: alpine:3.17.1
   script:
     - apk update || (sed -i -e 's/dl-cdn/dl-4/g' /etc/apk/repositories && apk update)
-    - 'command -v ssh-agent >/dev/null || ( apk update -y && apk install openssh-client -y )'
+    - 'command -v ssh-agent >/dev/null || ( apk -U install openssh-client )'
     - eval $(ssh-agent -s)
     - chmod 400 "$DEPLOY_KEY"
     - ssh-add "$DEPLOY_KEY"
@@ -96,7 +96,7 @@ dev-deploy:
   image: alpine:3.17.1
   script:
     - apk update || (sed -i -e 's/dl-cdn/dl-4/g' /etc/apk/repositories && apk update)
-    - 'command -v ssh-agent >/dev/null || ( apk update -y && apk install openssh-client -y )'
+    - 'command -v ssh-agent >/dev/null || ( apk -U install openssh-client )'
     - eval $(ssh-agent -s)
     - chmod 400 "$DEPLOY_KEY"
     - ssh-add "$DEPLOY_KEY"
