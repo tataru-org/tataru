@@ -47,9 +47,13 @@ stable-deploy:
   stage: deploy
   image: alpine:3.17.1
   script:
-    - chmod og= $DEPLOY_KEY
     - apk update || (sed -i -e 's/dl-cdn/dl-4/g' /etc/apk/repositories && apk update)
-    - apk add openssh-client || (sed -i -e 's/dl-cdn/dl-4/g' /etc/apk/repositories && apk add openssh-client)
+    - 'command -v ssh-agent >/dev/null || ( apk update -y && apk install openssh-client -y )'
+    - eval $(ssh-agent -s)
+    - chmod 400 "$DEPLOY_KEY"
+    - ssh-add "$DEPLOY_KEY"
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
     - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker logout"
     - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker login -u $DEPLOY_ACCESS_TOKEN_USER -p $DEPLOY_ACCESS_TOKEN $CI_REGISTRY"
     - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker pull $IMG_COMMIT"
@@ -91,9 +95,13 @@ dev-deploy:
   stage: deploy
   image: alpine:3.17.1
   script:
-    - chmod og= $DEPLOY_KEY
     - apk update || (sed -i -e 's/dl-cdn/dl-4/g' /etc/apk/repositories && apk update)
-    - apk add openssh-client || (sed -i -e 's/dl-cdn/dl-4/g' /etc/apk/repositories && apk add openssh-client)
+    - 'command -v ssh-agent >/dev/null || ( apk update -y && apk install openssh-client -y )'
+    - eval $(ssh-agent -s)
+    - chmod 400 "$DEPLOY_KEY"
+    - ssh-add "$DEPLOY_KEY"
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
     - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker logout"
     - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker login -u $DEPLOY_ACCESS_TOKEN_USER -p $DEPLOY_ACCESS_TOKEN $CI_REGISTRY"
     - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker pull $IMG_COMMIT"
