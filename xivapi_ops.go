@@ -127,9 +127,9 @@ func xivapiScanForCharacterIDs() {
 		// get all members that have null xiv character IDs and create requests
 		query := `
 		select
-			member_id,
+			member_discord_id,
 			member_name
-		from bot.members
+		from bot.member_metadata
 		where member_xiv_id is null
 		order by member_name
 		`
@@ -219,7 +219,7 @@ func xivapiScanForCharacterIDs() {
 			for discordUserID, xivCharacterID := range xivCharIDMap {
 				_, err = tx.Exec(
 					ctx,
-					`update bot.members set member_xiv_id=$1 where member_id=$2`,
+					`update bot.member_metadata set member_xiv_id=$1 where member_discord_id=$2`,
 					xivCharacterID,
 					discordUserID,
 				)

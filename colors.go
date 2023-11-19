@@ -50,19 +50,19 @@ func hex2rgba(hex string) (*RGBA, error) {
 
 	rRgba, err := strconv.ParseInt(rHex, 16, 64)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("strconv.ParseInt() 1 error: [%w]", err)
 	}
 	gRgba, err := strconv.ParseInt(gHex, 16, 64)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("strconv.ParseInt() 2 error: [%w]", err)
 	}
 	bRgba, err := strconv.ParseInt(bHex, 16, 64)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("strconv.ParseInt() 3 error: [%w]", err)
 	}
 	aRgbaInt, err := strconv.ParseInt(aHex, 16, 64)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("strconv.ParseInt() 4 error: [%w]", err)
 	}
 	aRgba := float64(aRgbaInt) / float64(255)
 	return &RGBA{

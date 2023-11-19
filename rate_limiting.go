@@ -3,11 +3,9 @@ package main
 import (
 	"math"
 	"math/rand"
-	"time"
 )
 
 func RandomRange(min float64, max float64) float64 {
-	rand.Seed(time.Now().UnixNano())
 	return (max-min)*rand.Float64() + min
 }
 

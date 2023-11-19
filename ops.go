@@ -1,47 +1,47 @@
 package main
 
 import (
+	"fmt"
 	"strconv"
 	"time"
 
 	"github.com/disgoorg/disgo/discord"
 	"github.com/disgoorg/log"
+	"github.com/disgoorg/snowflake/v2"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"google.golang.org/api/drive/v3"
 	"google.golang.org/api/sheets/v4"
 )
 
+const DefaultSheetID int64 = 0
+
 func buildFile(badFileExists bool) (*FileID, error) {
 	dbcon, err := dbpool.Acquire(ctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("database connection acquire error: [%w]", err)
 	}
 	defer dbcon.Release()
 	fileID, err := createFile(botConfig.MountSpreadsheetFileName)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("file creation error: [%w]", err)
 	}
 	log.Debugf("file created: %s", *fileID)
-	columnMap, err := NewColumnMap(mountSpreadsheetColumnDataFilepath)
+	expansions, err := getExpansions()
 	if err != nil {
-		return nil, err
-	}
-	sheetNames, err := columnMap.GetSheetNames()
-	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getExpansions() error: [%w]", err)
 	}
 
 	// add permissions to the file
 	permsFromDisk, err := GetPermissions(mountSpreadsheetPermissionsFilepath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("GetPermissions() error: [%w]", err)
 	}
 	newPermMap := map[string]*drive.Permission{}
 	for i := 0; i < len(permsFromDisk); i++ {
 		p, err := gdriveSvc.Permissions.Create(string(*fileID), permsFromDisk[i]).SupportsAllDrives(true).Do()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("gdriveSvc.PermissionsCreate() error; i=%d, permsFromDisk=[%v]: [%w]", i, permsFromDisk[i], err)
 		}
 		newPermMap[p.Id] = &drive.Permission{
 			EmailAddress: permsFromDisk[i].EmailAddress,
@@ -59,17 +59,17 @@ func buildFile(badFileExists bool) (*FileID, error) {
 
 	spreadsheet, err := gsheetsSvc.Spreadsheets.Get(string(*fileID)).Do()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("gsheetsSvc.Spreadsheets.Get() 1 error: [%w]", err)
 	}
 	// create the sheets
-	numSheets := len(sheetNames)
+	numSheets := len(expansions)
 	requests := make([]*sheets.Request, numSheets)
 	for i := 0; i < numSheets; i++ {
 		requests[i] = &sheets.Request{
 			AddSheet: &sheets.AddSheetRequest{
 				Properties: &sheets.SheetProperties{
 					Index: int64(i),
-					Title: sheetNames[i],
+					Title: fmt.Sprintf("init-%d", i),
 				},
 			},
 		}
@@ -79,7 +79,7 @@ func buildFile(badFileExists bool) (*FileID, error) {
 			Properties: &sheets.SpreadsheetProperties{
 				Title: botConfig.MountSpreadsheetTitle,
 			},
-			Fields: "*",
+			Fields: "title",
 		},
 	})
 	// the sheets api docs state that some replies may be empty, so do not rely on the response to
@@ -88,59 +88,102 @@ func buildFile(badFileExists bool) (*FileID, error) {
 		Requests: requests,
 	}).Do()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("gsheetsSvc.Spreadsheets.BatchUpdate() error: [%w]", err)
 	}
 	log.Debug("sheets created")
 
-	// delete the default sheet
-	var defaultSheetID int64 = 0
-	expansionTitles := getExpansionNames()
-	for i := 0; i < len(spreadsheet.Sheets); i++ {
-		isExpansionSheet := false
-		sheet := spreadsheet.Sheets[i]
-		for j := 0; j < len(expansionTitles); j++ {
-			if sheet.Properties.Title == string(expansionTitles[j]) {
-				isExpansionSheet = true
-				break
-			}
-		}
-		if !isExpansionSheet {
-			defaultSheetID = spreadsheet.Sheets[i].Properties.SheetId
-			break
-		}
-	}
+	// delete default sheet
 	_, err = gsheetsSvc.Spreadsheets.BatchUpdate(spreadsheet.SpreadsheetId, &sheets.BatchUpdateSpreadsheetRequest{
 		Requests: []*sheets.Request{
 			{
 				DeleteSheet: &sheets.DeleteSheetRequest{
-					SheetId: defaultSheetID,
+					SheetId: DefaultSheetID,
 				},
 			},
 		},
 	}).Do()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("gsheetsSvc.Spreadsheets.BatchUpdate() error: [%w]", err)
 	}
 	log.Debug("default sheet deleted")
 
-	// map expansions to sheet IDs
+	// collect and map sheet metadata to expansion metadata
 	spreadsheet, err = gsheetsSvc.Spreadsheets.Get(spreadsheet.SpreadsheetId).Do()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("gsheetsSvc.Spreadsheets.Get() 2 error: [%w]", err)
 	}
-	sheetMap := make(map[Expansion]SheetID, numSheets)
-	for i := 0; i < numSheets; i++ {
+	expansionSheetMap := make(map[SheetID]*Expansion)
+	sheetData := make([]*SheetMetadata, len(spreadsheet.Sheets))
+	for i := 0; i < len(spreadsheet.Sheets); i++ {
 		sheet := spreadsheet.Sheets[i]
-		exp, err := ExpansionNameToExpansion(ExpansionName(sheet.Properties.Title))
-		if err != nil {
-			continue
+		sheetData[i] = &SheetMetadata{
+			ID:    SheetID(sheet.Properties.SheetId),
+			Index: SheetIndex(sheet.Properties.Index),
 		}
-		sheetMap[exp] = SheetID(sheet.Properties.SheetId)
+		for j := 0; j < len(expansions); j++ {
+			if int(sheet.Properties.Index) == int(expansions[j].Index) {
+				expansionSheetMap[SheetID(sheet.Properties.SheetId)] = expansions[j]
+			}
+		}
 	}
 
-	// add the header row to each sheet
+	// save the sheet metadata and sheet-expansion map to the database
+	tx, err := dbcon.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("dbcon.Begin() 1 error: [%w]", err)
+	}
+	if badFileExists {
+		// delete data in file id table
+		_, err = tx.Exec(ctx, `delete from bot.file_ref`)
+		if err != nil {
+			return nil, fmt.Errorf("tx.Exec() 1-1 error: [%w]", err)
+		}
+	}
+	// put file id into db
+	_, err = tx.Exec(ctx, `insert into bot.file_ref(file_gcp_id) values($1)`, string(*fileID))
+	if err != nil {
+		return nil, fmt.Errorf("tx.Exec() 1-2 error: [%w]", err)
+	}
+	for i := 0; i < len(sheetData); i++ {
+		_, err = tx.Exec(
+			ctx,
+			`insert into bot.sheet_metadata(file_gcp_id,sheet_gcp_id,sheet_index) values($1,$2,$3)`,
+			string(*fileID),
+			sheetData[i].ID.String(),
+			sheetData[i].Index.String(),
+		)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"tx.Exec() 1-3 error; file_gcp_id=%s,sheet_gcp_id=%s,sheet_index=%s: [%w]",
+				string(*fileID),
+				sheetData[i].ID.String(),
+				sheetData[i].Index.String(),
+				err,
+			)
+		}
+		_, err = tx.Exec(
+			ctx,
+			`insert into bot.sheet_expansion_map(sheet_gcp_id,expansion_id) values($1,$2)`,
+			sheetData[i].ID.String(),
+			expansionSheetMap[sheetData[i].ID].ID,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("tx.Exec() 1-4 error: [%w]", err)
+		}
+	}
+	err = tx.Commit(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("tx.Commit() 1 error: [%w]", err)
+	}
+
+	columnMap, err := NewColumnMap()
+	if err != nil {
+		return nil, fmt.Errorf("NewColumnMap() error: [%w]", err)
+	}
+
+	// add the header row to each sheet & update each sheet's name
 	requests = []*sheets.Request{}
-	for sheetIndex, columnIndexMap := range columnMap.Mapping {
+	for sheet, columnIndexMap := range columnMap.Mapping {
 		numColumns := len(columnIndexMap)
 		cellData := make([]*sheets.CellData, numColumns)
 		for columnIndex, columnData := range columnIndexMap {
@@ -151,27 +194,35 @@ func buildFile(badFileExists bool) (*FileID, error) {
 				UserEnteredFormat: columnData.HeaderFormat,
 			}
 		}
-		requests = append(requests, &sheets.Request{
-			AppendCells: &sheets.AppendCellsRequest{
-				Fields: "*",
-				Rows: []*sheets.RowData{
-					{
-						Values: cellData,
+		requests = append(
+			requests,
+			&sheets.Request{
+				AppendCells: &sheets.AppendCellsRequest{
+					Fields: "user_entered_value,user_entered_format",
+					Rows: []*sheets.RowData{
+						{
+							Values: cellData,
+						},
+					},
+					SheetId: int64(sheet.ID),
+				},
+			},
+		)
+		requests = append(
+			requests,
+			&sheets.Request{
+				UpdateSheetProperties: &sheets.UpdateSheetPropertiesRequest{
+					Fields: "title",
+					Properties: &sheets.SheetProperties{
+						Title:   string(expansionSheetMap[sheet.ID].Name),
+						SheetId: int64(sheet.ID),
+						Index:   int64(sheet.Index),
 					},
 				},
-				SheetId: int64(sheetMap[Expansion(sheetIndex)]),
 			},
-		})
+		)
 	}
-	requests = append(requests, &sheets.Request{
-		UpdateSheetProperties: &sheets.UpdateSheetPropertiesRequest{
-			Properties: &sheets.SheetProperties{
-				Index:   0,
-				SheetId: int64(sheetMap[Expansion(0)]),
-			},
-			Fields: "index,sheetId",
-		},
-	})
+
 	// intentional execution blocking
 	googleSheetsWriteReqs <- &SheetBatchUpdate{
 		ID: spreadsheet.SpreadsheetId,
@@ -179,51 +230,31 @@ func buildFile(badFileExists bool) (*FileID, error) {
 			Requests: requests,
 		},
 	}
-	log.Debug("header rows and protected ranges added to each sheet")
+	log.Debug("header rows added to each sheet")
 
 	// save what is needed to the db
-	tx, err := dbcon.Begin(ctx)
+	tx, err = dbcon.Begin(ctx)
 	if err != nil {
-		return nil, err
-	}
-	if badFileExists {
-		// delete data in file id table
-		_, err = tx.Exec(ctx, `delete from bot.file_ref`)
-		if err != nil {
-			return nil, err
-		}
-	}
-	// put file id into db
-	_, err = tx.Exec(ctx, `insert into bot.file_ref(file_id) values($1)`, fileID)
-	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("dbcon.Begin() 2 error: [%w]", err)
 	}
 	// put perm ids into db
 	for id, perm := range newPermMap {
 		_, err = tx.Exec(
 			ctx,
-			`insert into bot.permissions(file_id,perm_id,email,role,role_type) values($1,$2,$3,$4,$5)`,
-			fileID,
+			`insert into bot.permissions(file_gcp_id,perm_gcp_id,email,role,role_type) values($1,$2,$3,$4,$5)`,
+			string(*fileID),
 			id,
 			perm.EmailAddress,
 			perm.Role,
 			perm.Type,
 		)
 		if err != nil {
-			return nil, err
-		}
-	}
-	// put sheet IDs into db
-	for exp, sheetID := range sheetMap {
-		sheetIDStr := strconv.FormatInt(int64(sheetID), 10)
-		_, err = tx.Exec(ctx, `insert into bot.sheets(file_id,expansion,sheet_id) values($1,$2,$3)`, fileID, int(exp), sheetIDStr)
-		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("tx.Exec() 2-3 error; id=%s, perm=%v [%w]", id, *perm, err)
 		}
 	}
 	err = tx.Commit(ctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("tx.Commit() error: [%w]", err)
 	}
 	log.Debug("required data saved to db")
 	return fileID, nil
@@ -232,13 +263,13 @@ func buildFile(badFileExists bool) (*FileID, error) {
 func syncRoleMembers(id FileID, guildMembers []discord.Member) error {
 	dbcon, err := dbpool.Acquire(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("database connection acquire error: [%w]", err)
 	}
 	defer dbcon.Release()
 	// get members from db
 	dbMembers, err := getMembersFromDB()
 	if err != nil && err != pgx.ErrNoRows {
-		return err
+		return fmt.Errorf("getMembersFromDB() error: [%w]", err)
 	}
 	// get the watched role id
 	var roleID *string
@@ -248,14 +279,14 @@ func syncRoleMembers(id FileID, guildMembers []discord.Member) error {
 		// exit if role is not set
 		return nil
 	} else if err != nil {
-		return err
+		return fmt.Errorf("getting role_id error: [%w]", err)
 	}
 	log.Debug("got role id")
 
 	// get column formatting
-	columnMap, err := NewColumnMap(mountSpreadsheetColumnDataFilepath)
+	columnMap, err := NewColumnMap()
 	if err != nil {
-		return err
+		return fmt.Errorf("NewColumnMap() error: [%w]", err)
 	}
 
 	// filter out members without the watched role id
@@ -276,7 +307,7 @@ func syncRoleMembers(id FileID, guildMembers []discord.Member) error {
 
 	spreadsheet, err := gsheetsSvc.Spreadsheets.Get(string(id)).IncludeGridData(true).Do()
 	if err != nil {
-		return err
+		return fmt.Errorf("gsheetsSvc.Spreadsheets.Get() 1 error: [%w]", err)
 	}
 	if len(dbMembers) == len(roleMembers) && len(dbMembers) == 0 {
 		return nil
@@ -312,7 +343,7 @@ func syncRoleMembers(id FileID, guildMembers []discord.Member) error {
 			}
 		}
 	}
-	log.Debug("mapped row indices to each member to delete")
+	log.Debug("mapped row indices to each member to delete from spreadsheet")
 	// delete the members' rows in the spreadsheet
 	requests := make([]*sheets.Request, len(deleteMemberMap)*len(spreadsheet.Sheets))
 	requestIndex := 0
@@ -349,23 +380,23 @@ func syncRoleMembers(id FileID, guildMembers []discord.Member) error {
 	// delete members from the db
 	tx, err := dbcon.Begin(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("dbcon.Begin() 1 error: [%w]", err)
 	}
 	for i := 0; i < len(deleteMembers); i++ {
-		_, err = tx.Exec(ctx, `delete from bot.members where member_id=$1`, string(deleteMembers[i].id))
+		_, err = tx.Exec(ctx, `delete from bot.member_metadata where member_discord_id=$1`, string(deleteMembers[i].id))
 		if err != nil {
-			return err
+			return fmt.Errorf("delete from bot.member_metadata error; member_discord_id=%s: [%w]", string(deleteMembers[i].id), err)
 		}
 	}
 	err = tx.Commit(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("tx.Commit() 1 error: [%w]", err)
 	}
 	log.Debugf("deleted %d members from db", len(deleteMembers))
 
 	spreadsheet, err = gsheetsSvc.Spreadsheets.Get(string(id)).IncludeGridData(true).Do()
 	if err != nil {
-		return err
+		return fmt.Errorf("gsheetsSvc.Spreadsheets.Get() 2 error: [%w]", err)
 	}
 	if len(filteredDBMembers) == len(roleMembers) && len(filteredDBMembers) == 0 {
 		return nil
@@ -386,8 +417,9 @@ func syncRoleMembers(id FileID, guildMembers []discord.Member) error {
 	}
 	log.Debug("got members to add")
 	// add the members' rows in the spreadsheet
-	requests = make([]*sheets.Request, len(spreadsheet.Sheets))
-	for i := 0; i < len(spreadsheet.Sheets); i++ {
+	counter := 0
+	requests = make([]*sheets.Request, len(columnMap.Mapping))
+	for sheetMetadata, sheetColumnMap := range columnMap.Mapping {
 		rowData := []*sheets.RowData{}
 		for j := 0; j < len(addMembers); j++ {
 			userID := addMembers[j].User.ID.String()
@@ -403,20 +435,20 @@ func syncRoleMembers(id FileID, guildMembers []discord.Member) error {
 					UserEnteredValue: &sheets.ExtendedValue{
 						StringValue: &userID,
 					},
-					UserEnteredFormat: columnMap.Mapping[SheetIndex(i)][0].ColumnFormat,
+					UserEnteredFormat: sheetColumnMap[0].ColumnFormat,
 				},
 				{
 					UserEnteredValue: &sheets.ExtendedValue{
 						StringValue: &username,
 					},
-					UserEnteredFormat: columnMap.Mapping[SheetIndex(i)][1].ColumnFormat,
+					UserEnteredFormat: sheetColumnMap[1].ColumnFormat,
 				},
 			}
 			boolVal := false
-			numColumns := len(columnMap.Mapping[SheetIndex(i)])
+			numColumns := len(sheetColumnMap)
 			for k := 0; k < numColumns-2; k++ {
 				vals = append(vals, &sheets.CellData{
-					UserEnteredFormat: columnMap.Mapping[SheetIndex(i)][ColumnIndex(k+2)].ColumnFormat,
+					UserEnteredFormat: sheetColumnMap[ColumnIndex(k+2)].ColumnFormat,
 					UserEnteredValue: &sheets.ExtendedValue{
 						BoolValue: &boolVal,
 					},
@@ -430,15 +462,16 @@ func syncRoleMembers(id FileID, guildMembers []discord.Member) error {
 			rowData = append(rowData, &sheets.RowData{
 				Values: vals,
 			})
-			log.Debugf("member %s (id:%s) queued to be added to spreadsheet %d", username, userID, i)
+			log.Debugf("member %s (id:%s) queued to be added to spreadsheet %d", username, userID, sheetMetadata.Index)
 		}
-		requests[i] = &sheets.Request{
+		requests[counter] = &sheets.Request{
 			AppendCells: &sheets.AppendCellsRequest{
 				Fields:  "*",
-				SheetId: spreadsheet.Sheets[i].Properties.SheetId,
+				SheetId: int64(sheetMetadata.ID),
 				Rows:    rowData,
 			},
 		}
+		counter++
 	}
 	if len(requests) != 0 {
 		go func() {
@@ -456,7 +489,7 @@ func syncRoleMembers(id FileID, guildMembers []discord.Member) error {
 
 	tx, err = dbcon.Begin(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("dbcon.Begin() 2 error: [%w]", err)
 	}
 	// add members to db
 	for i := 0; i < len(addMembers); i++ {
@@ -466,48 +499,55 @@ func syncRoleMembers(id FileID, guildMembers []discord.Member) error {
 		} else {
 			name = *addMembers[i].Nick
 		}
-		_, err = tx.Exec(ctx, `insert into bot.members(member_id,member_name) values($1,$2)`, addMembers[i].User.ID.String(), name)
+		_, err = tx.Exec(ctx, `insert into bot.member_metadata(member_discord_id,member_name) values($1,$2)`, addMembers[i].User.ID.String(), name)
 		if err != nil {
-			return err
+			return fmt.Errorf("add member to db error; member_discord_id=%s: [%w]", addMembers[i].User.ID.String(), err)
 		}
 	}
 	err = tx.Commit(ctx)
+	if err != nil {
+		return fmt.Errorf("tx.Commit() 2 error: [%w]", err)
+	}
 	log.Debugf("added %d members to db", len(addMembers))
-	return err
+	return nil
 }
 
 func xivMountScan() error {
 	dbcon, err := dbpool.Acquire(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("database connection acquire error: [%w]", err)
 	}
 	defer dbcon.Release()
 	// get all members that have xiv character IDs and create requests
 	query := `
-			select
-				member_id,
-				member_name,
-				member_xiv_id
-			from bot.members
-			where member_xiv_id is not null
-			order by member_name
-			`
+		select
+			member_discord_id,
+			member_name,
+			member_xiv_id
+		from bot.member_metadata
+		where member_xiv_id is not null
+		order by member_name
+	`
 	rows, err := dbcon.Query(
 		ctx,
 		query,
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("get all members for mount scan error: [%w]", err)
 	}
-	reqMap := map[string]XivCharacterRequest{}
+	reqMap := map[snowflake.ID]XivCharacterRequest{}
 	requests := []XivCharacterRequest{}
 	for rows.Next() {
-		var memberID string
+		var memberIDStr string
 		var membername string
 		var memberXivID string
-		err = rows.Scan(&memberID, &membername, &memberXivID)
+		err = rows.Scan(&memberIDStr, &membername, &memberXivID)
 		if err != nil {
-			return err
+			return fmt.Errorf("row scan 1 error: [%w]", err)
+		}
+		memberID, err := snowflake.Parse(memberIDStr)
+		if err != nil {
+			return fmt.Errorf("parse snowflake 1 error; member_discord_id=%s: [%w]", memberIDStr, err)
 		}
 		req := XivCharacterRequest{
 			Token: uuid.New().String(),
@@ -529,13 +569,13 @@ func xivMountScan() error {
 	xivCharProfiles, err := xivapiCollectCharacterResponses(requests)
 	log.Debug("character profiles collected")
 	if err != nil {
-		return err
+		return fmt.Errorf("xivapiCollectCharacterResponses() error: [%w]", err)
 	}
 	if len(xivCharProfiles) == 0 {
 		return nil
 	}
 	// map discord user IDs to xiv character profiles
-	profileMap := map[string]XivCharacter{}
+	profileMap := map[snowflake.ID]XivCharacter{}
 	for i := 0; i < len(xivCharProfiles); i++ {
 		for discUserID, xivCharRequest := range reqMap {
 			if xivCharRequest.XivID == strconv.FormatUint(uint64(xivCharProfiles[i].Character.ID), 10) {
@@ -544,40 +584,103 @@ func xivMountScan() error {
 			}
 		}
 	}
+	// update database with member data
+	mountMetadata, err := getXivMountMetadata()
+	if err != nil {
+		return fmt.Errorf("getXivMountMetadata() error: [%w]", err)
+	}
+	tx, err := dbcon.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("dbcon.Begin() 1 error: [%w]", err)
+	}
+	for memberID, xivChar := range profileMap {
+		for i := 0; i < len(mountMetadata); i++ {
+			for j := 0; j < len(xivChar.Mounts); j++ {
+				if string(mountMetadata[i].Name) == xivChar.Mounts[j].Name {
+					_, err = tx.Exec(
+						ctx,
+						`
+						insert into bot.member_data(
+							member_discord_id,
+							mount_id,
+							has_mount
+						) values(
+							$1,
+							$2,
+							$3
+						)
+						on conflict (
+							member_discord_id,
+							mount_id
+						)
+						do update set
+							has_mount=$3
+						where
+							member_data.member_discord_id=$1
+							and member_data.mount_id=$2
+						`,
+						memberID.String(),
+						mountMetadata[i].ID,
+						true,
+					)
+					if err != nil {
+						return fmt.Errorf("upsert member data error: [%w]", err)
+					}
+					break
+				}
+			}
+		}
+	}
+	err = tx.Commit(ctx)
+	if err != nil {
+		return fmt.Errorf("tx.Commit() 1 error: [%w]", err)
+	}
+
+	// everything below this tldr: sync member data in google sheets
+	bossMountMap, err := getXivBossMountMapping()
+	if err != nil {
+		return fmt.Errorf("getXivBossMountMapping() error: [%w]", err)
+	}
 	// get the spreadsheet file id
 	var fileID string
-	row := dbcon.QueryRow(ctx, `select file_id from bot.file_ref`)
+	row := dbcon.QueryRow(ctx, `select file_gcp_id from bot.file_ref`)
 	err = row.Scan(&fileID)
 	if err != nil {
-		return err
+		return fmt.Errorf("row scan 2 error: [%w]", err)
 	}
 	// get the spreadsheet with all file data
 	spreadsheet, err := gsheetsSvc.Spreadsheets.Get(fileID).IncludeGridData(true).Do()
 	if err != nil {
-		return err
+		return fmt.Errorf("gsheetsSvc.Spreadsheets.Get() error: [%w]", err)
 	}
 	// get the column format mapping
-	columnMap, err := NewColumnMap(mountSpreadsheetColumnDataFilepath)
+	columnMap, err := NewColumnMap()
 	if err != nil {
-		return err
+		return fmt.Errorf("NewColumnMap() error: [%w]", err)
 	}
 	// create sheets api requests to update values according
 	// to the mount list in the corresponding character profile
 	gapiRequests := []*sheets.Request{}
-	bossMountMap := getXivBossMountMapping()
 	for i := 0; i < len(spreadsheet.Sheets); i++ {
 		for memberID, charProfile := range profileMap {
 			for j := 1; j < len(spreadsheet.Sheets[i].Data[0].RowData); j++ {
-				row := spreadsheet.Sheets[i].Data[0].RowData[j]
-				curID := row.Values[0].EffectiveValue.StringValue
-				if *curID != memberID {
+				sheet := spreadsheet.Sheets[i]
+				row := sheet.Data[0].RowData[j]
+				curID, err := snowflake.Parse(*row.Values[0].EffectiveValue.StringValue)
+				if err != nil {
+					return fmt.Errorf("parse snowflake 2 error: [%w]", err)
+				}
+				if curID != memberID {
 					continue
 				}
 
 				vals := []*sheets.CellData{}
 				for k := 2; k < len(row.Values); k++ {
 					hasMount := false
-					bossName := columnMap.Mapping[SheetIndex(i)][ColumnIndex(k)].Name
+					bossName := columnMap.Mapping[SheetMetadata{
+						ID:    SheetID(sheet.Properties.SheetId),
+						Index: SheetIndex(sheet.Properties.Index),
+					}][ColumnIndex(k)].Name
 					for a := 0; a < len(charProfile.Mounts); a++ {
 						mountName := charProfile.Mounts[a].Name
 						if mountName == string(bossMountMap[BossName(bossName)]) {
@@ -621,7 +724,7 @@ func xivMountScan() error {
 				},
 			}
 		}()
-		log.Debug("Mounts in spreadsheet successfully updated")
+		log.Debug("Data in spreadsheet successfully queued to be updated")
 	} else {
 		log.Debug("Nothing to update")
 	}
@@ -641,20 +744,20 @@ func scanForMounts() {
 func discordNicknameScan(discMembers []discord.Member) error {
 	dbcon, err := dbpool.Acquire(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("database connection acquire error: [%w]", err)
 	}
 	defer dbcon.Release()
 	// get file id
 	var fileID string
-	row := dbcon.QueryRow(ctx, `select file_id from bot.file_ref`)
+	row := dbcon.QueryRow(ctx, `select file_gcp_id from bot.file_ref`)
 	err = row.Scan(&fileID)
 	if err != nil {
-		return err
+		return fmt.Errorf("getting file id error: [%w]", err)
 	}
 	// get all members in db
 	dbMembers, err := getMembersFromDB()
 	if err != nil {
-		return err
+		return fmt.Errorf("getMembersFromDB() error: [%w]", err)
 	}
 	// map discord ID to current member nickname
 	memberMap := map[string]string{}
@@ -675,7 +778,7 @@ func discordNicknameScan(discMembers []discord.Member) error {
 	}
 	spreadsheet, err := gsheetsSvc.Spreadsheets.Get(fileID).IncludeGridData(true).Do()
 	if err != nil {
-		return err
+		return fmt.Errorf("gsheetsSvc.Spreadsheets.Get() error: [%w]", err)
 	}
 	// update all member names in the spreadsheet
 	requests := []*sheets.Request{}
@@ -729,17 +832,17 @@ func discordNicknameScan(discMembers []discord.Member) error {
 
 		tx, err := dbcon.Begin(ctx)
 		if err != nil {
-			return err
+			return fmt.Errorf("dbcon.Begin() error: [%w]", err)
 		}
 		for userID, userName := range memberMap {
-			_, err = tx.Exec(ctx, `update bot.members set member_name=$1 where member_id=$2`, userName, userID)
+			_, err = tx.Exec(ctx, `update bot.member_metadata set member_name=$1 where member_discord_id=$2`, userName, userID)
 			if err != nil {
-				return err
+				return fmt.Errorf("update bot.member_metadata error: [%w]", err)
 			}
 		}
 		err = tx.Commit(ctx)
 		if err != nil {
-			return err
+			return fmt.Errorf("tx.Commit() error: [%w]", err)
 		}
 	}
 	return nil

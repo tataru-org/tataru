@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"runtime/debug"
 	"syscall"
 	"time"
 
@@ -65,11 +64,12 @@ func onReadyHandler(event *events.Ready) {
 }
 
 func main() {
+	log.SetFlags(log.Lshortfile)
+
 	var err error
 	botConfig, err = NewConfig(discordConfigFilepath)
 	if err != nil {
 		log.Fatal(err)
-		log.Fatal(debug.Stack())
 		return
 	}
 	log.Debug("parsed bot config file")
@@ -90,7 +90,6 @@ func main() {
 	)
 	if err != nil {
 		log.Fatal(err)
-		log.Fatal(debug.Stack())
 		return
 	}
 	defer dbpool.Close()
@@ -98,7 +97,6 @@ func main() {
 	dbcon, err := dbpool.Acquire(ctx)
 	if err != nil {
 		log.Fatal(err)
-		log.Fatal(debug.Stack())
 		return
 	}
 	dbcon.Release()
@@ -108,13 +106,11 @@ func main() {
 	b, err := os.ReadFile(googleApiConfigRelativeFilepath)
 	if err != nil {
 		log.Fatal(err)
-		log.Fatal(debug.Stack())
 		return
 	}
 	gconfig, err := google.JWTConfigFromJSON(b, gscope)
 	if err != nil {
 		log.Fatal(err)
-		log.Fatal(debug.Stack())
 		return
 	}
 	gclient := gconfig.Client(ctx)
@@ -122,7 +118,6 @@ func main() {
 	gdriveSvc, err = drive.NewService(ctx, option.WithHTTPClient(gclient))
 	if err != nil {
 		log.Fatal(err)
-		log.Fatal(debug.Stack())
 		return
 	}
 	log.Debug("google drive service initialized")
@@ -151,19 +146,20 @@ func main() {
 		bot.WithEventListenerFunc(onGuildReady),
 		bot.WithEventListenerFunc(setRoleHandler),
 		bot.WithEventListenerFunc(unsetRoleHandler),
-		bot.WithEventListenerFunc(forceMemberSyncHandler),
+		bot.WithEventListenerFunc(spreadsheetDiscordMemberSyncHandler),
 		bot.WithEventListenerFunc(onGuildMemberUpdateHandler),
-		bot.WithEventListenerFunc(syncFormattingHandler),
+		bot.WithEventListenerFunc(syncSpreadsheetStylingHandler),
 		bot.WithEventListenerFunc(syncFilePermsHandler),
-		bot.WithEventListenerFunc(tryXivCharacterSearchHandler),
-		bot.WithEventListenerFunc(mapXivCharIDHandler),
-		bot.WithEventListenerFunc(forceScanXivMountsHandler),
-		bot.WithEventListenerFunc(forceUpdateMemberNamesHandler),
+		bot.WithEventListenerFunc(anyXivCharacterSearchHandler),
+		bot.WithEventListenerFunc(xivCharacterSearchHandler),
+		bot.WithEventListenerFunc(mapAnyXivCharacterIDHandler),
+		bot.WithEventListenerFunc(mapXivCharacterIDHandler),
+		bot.WithEventListenerFunc(scanXivMountsHandler),
+		bot.WithEventListenerFunc(updateMemberNamesHandler),
 		bot.WithCacheConfigOpts(cache.WithCaches(cache.FlagMembers)),
 	)
 	if err != nil {
 		log.Fatal(err)
-		log.Fatal(debug.Stack())
 		return
 	}
 	defer client.Close(context.TODO())
@@ -176,7 +172,6 @@ func main() {
 
 	if err = client.OpenGateway(context.TODO()); err != nil {
 		log.Fatal(err)
-		log.Fatal(debug.Stack())
 		return
 	}
 	log.Debug("bot initialized")

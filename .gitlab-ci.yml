@@ -3,6 +3,7 @@ variables:
   VER: v0.2.0
   IMG_COMMIT: $CI_REGISTRY_IMAGE/$CI_COMMIT_REF_NAME:$CI_COMMIT_SHORT_SHA
   IMG_VERS: $CI_REGISTRY_IMAGE/$CI_COMMIT_REF_NAME:$VER-$CI_COMMIT_SHORT_SHA
+  POSTGRES_VERS: 15.1-bullseye
 
 stages:
   - test
@@ -52,12 +53,17 @@ stable-deploy:
     - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker logout"
     - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker login -u $DEPLOY_ACCESS_TOKEN_USER -p $DEPLOY_ACCESS_TOKEN $CI_REGISTRY"
     - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker pull $IMG_COMMIT"
-    - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker container rm -f $PROD_CONTAINER_NAME"
+    - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker container stop"
+    - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker container rm $PROD_CONTAINER_NAME"
+    - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "rm -rf $PROD_INIT_DB_DATA_DIR/*"
+    - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "mkdir $PROD_INIT_DB_DATA_DIR"
+    - sftp -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "put initial-db-data/* $PROD_INIT_DB_DATA_DIR/"
+    - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "mkdir $PROD_INIT_DB_DATA_DIR"
     - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker volume create $PROD_DATA_VOLUME_NAME"
     - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker network create --gateway $PROD_NETWORK_GATEWAY --subnet $PROD_NETWORK_SUBNET $PROD_NETWORK_NAME || true"
-    - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker container create --restart=always --network $PROD_NETWORK_NAME --ip $PROD_DB_CONTAINER_IP --name $PROD_DB_CONTAINER_NAME -v $PROD_DATA_VOLUME_NAME:/var/lib/postgresql/data -e POSTGRES_PASSWORD=$PROD_DB_PW -e POSTGRES_USER=$PROD_DB_USER -e POSTGRES_DB=$PROD_DB_NAME postgres:15.1-bullseye || true"
+    - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "if [ ! "$(docker ps -a -q -f name=$DEV_DB_CONTAINER_NAME)" ]; then docker container create --restart=always --network $PROD_NETWORK_NAME --ip $PROD_DB_CONTAINER_IP --name $PROD_DB_CONTAINER_NAME -v $PROD_DATA_VOLUME_NAME:/var/lib/postgresql/data -e POSTGRES_PASSWORD=$PROD_DB_PW -e POSTGRES_USER=$PROD_DB_USER -e POSTGRES_DB=$PROD_DB_NAME postgres:$POSTGRES_VERS fi"
     - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker container start $PROD_DB_CONTAINER_NAME || true"
-    - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker container create --restart=always --network $PROD_NETWORK_NAME --ip $PROD_CONTAINER_IP --name $PROD_CONTAINER_NAME -v $PROD_BOT_CONFIG_FILEPATH:/app/config.json -v $PROD_FILE_PERMS_FILEPATH:/app/file-permissions.json -v $PROD_COLUMN_DATA_FILEPATH:/app/column-data.csv -v $PROD_GOOGLE_API_SVC_CREDS_FILEPATH:/app/svc-creds.json $IMG_COMMIT"
+    - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker container create --restart=always --network $PROD_NETWORK_NAME --ip $PROD_CONTAINER_IP --name $PROD_CONTAINER_NAME -v $PROD_BOT_CONFIG_FILEPATH:/app/config.json -v $PROD_FILE_PERMS_FILEPATH:/app/file-permissions.json -v $PROD_INIT_DB_DATA_DIR:/app/init-db-data -v $PROD_GOOGLE_API_SVC_CREDS_FILEPATH:/app/svc-creds.json $IMG_COMMIT"
     - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker container start $PROD_CONTAINER_NAME"
     - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker logout"
   tags:
@@ -92,11 +98,15 @@ dev-deploy:
     - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker login -u $DEPLOY_ACCESS_TOKEN_USER -p $DEPLOY_ACCESS_TOKEN $CI_REGISTRY"
     - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker pull $IMG_COMMIT"
     - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker container rm -f $DEV_CONTAINER_NAME"
+    - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "rm -rf $DEV_INIT_DB_DATA_DIR/*"
+    - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "mkdir $DEV_INIT_DB_DATA_DIR"
+    - sftp -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "put initial-db-data/* $DEV_INIT_DB_DATA_DIR/"
+    - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "mkdir $DEV_INIT_DB_DATA_DIR"
     - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker volume create $DEV_DATA_VOLUME_NAME"
     - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker network create --gateway $DEV_NETWORK_GATEWAY --subnet $DEV_NETWORK_SUBNET $DEV_NETWORK_NAME || true"
-    - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker container create --restart=always --network $DEV_NETWORK_NAME --ip $DEV_DB_CONTAINER_IP --name $DEV_DB_CONTAINER_NAME -v $DEV_DATA_VOLUME_NAME:/var/lib/postgresql/data -e POSTGRES_PASSWORD=$DEV_DB_PW -e POSTGRES_USER=$DEV_DB_USER -e POSTGRES_DB=$DEV_DB_NAME postgres:15.1-bullseye || true"
+    - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "if [ ! "$(docker ps -a -q -f name=$DEV_DB_CONTAINER_NAME)" ]; then docker container create --restart=always --network $DEV_NETWORK_NAME --ip $DEV_DB_CONTAINER_IP --name $DEV_DB_CONTAINER_NAME -v $DEV_DATA_VOLUME_NAME:/var/lib/postgresql/data -e POSTGRES_PASSWORD=$DEV_DB_PW -e POSTGRES_USER=$DEV_DB_USER -e POSTGRES_DB=$DEV_DB_NAME postgres:$POSTGRES_VERS fi"
     - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker container start $DEV_DB_CONTAINER_NAME || true"
-    - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker container create --restart=always --network $DEV_NETWORK_NAME --ip $DEV_CONTAINER_IP --name $DEV_CONTAINER_NAME -v $DEV_BOT_CONFIG_FILEPATH:/app/config.json -v $DEV_FILE_PERMS_FILEPATH:/app/file-permissions.json -v $DEV_COLUMN_DATA_FILEPATH:/app/column-data.csv -v $DEV_GOOGLE_API_SVC_CREDS_FILEPATH:/app/svc-creds.json $IMG_COMMIT"
+    - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker container create --restart=always --network $DEV_NETWORK_NAME --ip $DEV_CONTAINER_IP --name $DEV_CONTAINER_NAME -v $DEV_BOT_CONFIG_FILEPATH:/app/config.json -v $DEV_FILE_PERMS_FILEPATH:/app/file-permissions.json -v $DEV_INIT_DB_DATA_DIR:/app/init-db-data -v $DEV_GOOGLE_API_SVC_CREDS_FILEPATH:/app/svc-creds.json $IMG_COMMIT"
     - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker container start $DEV_CONTAINER_NAME"
     - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker logout"
   tags:

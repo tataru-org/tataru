@@ -1,8 +1,6 @@
 package main
 
 import (
-	"runtime/debug"
-
 	"github.com/disgoorg/disgo/events"
 	"github.com/disgoorg/log"
 	"google.golang.org/api/sheets/v4"
@@ -16,7 +14,6 @@ func onGuildMemberUpdateHandler(event *events.GuildMemberUpdate) {
 	dbcon, err := dbpool.Acquire(ctx)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 	defer dbcon.Release()
@@ -27,12 +24,10 @@ func onGuildMemberUpdateHandler(event *events.GuildMemberUpdate) {
 	err = row.Scan(&roleID)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 	if roleID == nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 
@@ -61,25 +56,22 @@ func onGuildMemberUpdateHandler(event *events.GuildMemberUpdate) {
 	var fileID *string
 	row = dbcon.QueryRow(
 		ctx,
-		"select file_id from bot.file_ref",
+		"select file_gcp_id from bot.file_ref",
 	)
 	err = row.Scan(&fileID)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 	if fileID == nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 
 	// get column formatting
-	columnMap, err := NewColumnMap(mountSpreadsheetColumnDataFilepath)
+	columnMap, err := NewColumnMap()
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 
@@ -87,7 +79,6 @@ func onGuildMemberUpdateHandler(event *events.GuildMemberUpdate) {
 	spreadsheet, err := gsheetsSvc.Spreadsheets.Get(*fileID).IncludeGridData(true).Do()
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 
@@ -103,25 +94,38 @@ func onGuildMemberUpdateHandler(event *events.GuildMemberUpdate) {
 			// add the member to the spreadsheet
 			requests := make([]*sheets.Request, len(spreadsheet.Sheets))
 			for i := 0; i < len(spreadsheet.Sheets); i++ {
+				sheet := spreadsheet.Sheets[i]
 				vals := []*sheets.CellData{
 					{
 						UserEnteredValue: &sheets.ExtendedValue{
 							StringValue: &userID,
 						},
-						UserEnteredFormat: columnMap.Mapping[SheetIndex(i)][0].ColumnFormat,
+						UserEnteredFormat: columnMap.Mapping[SheetMetadata{
+							ID:    SheetID(sheet.Properties.SheetId),
+							Index: SheetIndex(sheet.Properties.Index),
+						}][0].ColumnFormat,
 					},
 					{
 						UserEnteredValue: &sheets.ExtendedValue{
 							StringValue: &username,
 						},
-						UserEnteredFormat: columnMap.Mapping[SheetIndex(i)][1].ColumnFormat,
+						UserEnteredFormat: columnMap.Mapping[SheetMetadata{
+							ID:    SheetID(sheet.Properties.SheetId),
+							Index: SheetIndex(sheet.Properties.Index),
+						}][1].ColumnFormat,
 					},
 				}
 				boolVal := false
-				numColumns := len(columnMap.Mapping[SheetIndex(i)])
+				numColumns := len(columnMap.Mapping[SheetMetadata{
+					ID:    SheetID(sheet.Properties.SheetId),
+					Index: SheetIndex(sheet.Properties.Index),
+				}])
 				for k := 0; k < numColumns-2; k++ {
 					vals = append(vals, &sheets.CellData{
-						UserEnteredFormat: columnMap.Mapping[SheetIndex(i)][ColumnIndex(k+2)].ColumnFormat,
+						UserEnteredFormat: columnMap.Mapping[SheetMetadata{
+							ID:    SheetID(sheet.Properties.SheetId),
+							Index: SheetIndex(sheet.Properties.Index),
+						}][ColumnIndex(k+2)].ColumnFormat,
 						UserEnteredValue: &sheets.ExtendedValue{
 							BoolValue: &boolVal,
 						},
@@ -155,10 +159,9 @@ func onGuildMemberUpdateHandler(event *events.GuildMemberUpdate) {
 				}()
 				log.Debugf("member %s (id:%s) added to spreadsheet", username, userID)
 
-				_, err = dbcon.Exec(ctx, `insert into bot.members(member_id,member_name) values($1,$2)`, userID, username)
+				_, err = dbcon.Exec(ctx, `insert into bot.member_metadata(member_discord_id,member_name) values($1,$2)`, userID, username)
 				if err != nil {
 					log.Error(err)
-					log.Error(debug.Stack())
 					return
 				}
 				log.Debugf("member %s (id:%s) added to db", username, userID)
@@ -205,10 +208,9 @@ func onGuildMemberUpdateHandler(event *events.GuildMemberUpdate) {
 				}()
 				log.Debugf("member %s (id:%s) deleted from spreadsheet", username, userID)
 
-				_, err = dbcon.Exec(ctx, `delete from bot.members where member_id=$1`, userID)
+				_, err = dbcon.Exec(ctx, `delete from bot.member_metadata where member_discord_id=$1`, userID)
 				if err != nil {
 					log.Error(err)
-					log.Error(debug.Stack())
 					return
 				}
 				log.Debugf("member %s (id:%s) deleted from db", username, userID)
@@ -260,10 +262,9 @@ func onGuildMemberUpdateHandler(event *events.GuildMemberUpdate) {
 				}
 			}()
 
-			_, err = dbcon.Exec(ctx, `update bot.members set member_name=$1 where member_id=$2`, username, userID)
+			_, err = dbcon.Exec(ctx, `update bot.member_metadata set member_name=$1 where member_discord_id=$2`, username, userID)
 			if err != nil {
 				log.Error(err)
-				log.Error(debug.Stack())
 				return
 			}
 		}
