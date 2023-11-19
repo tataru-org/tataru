@@ -94,6 +94,9 @@ dev-deploy:
   stage: deploy
   image: alpine:3.17.1
   script:
+    - pwd
+    - ls -lha
+    - ls -lha ./initial-db-data
     - apk update || (sed -i -e 's/dl-cdn/dl-4/g' /etc/apk/repositories && apk update)
     - 'command -v ssh-agent >/dev/null || ( apk -U add openssh-client )'
     - eval $(ssh-agent -s)
