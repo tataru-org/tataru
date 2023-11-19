@@ -110,7 +110,7 @@ dev-deploy:
     - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker container rm -f $DEV_CONTAINER_NAME"
     - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "rm -rf $DEV_INIT_DB_DATA_DIR/*"
     - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "mkdir -p $DEV_INIT_DB_DATA_DIR"
-    - sftp -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "put /builds/tataru1/tataru/initial-db-data/*.csv $DEV_INIT_DB_DATA_DIR/"
+    - sftp -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "put /builds/tataru1/tataru/initial-db-data/bot.boss_expansion_map.csv $DEV_INIT_DB_DATA_DIR/bot.boss_expansion_map.csv"
     - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker volume create $DEV_DATA_VOLUME_NAME"
     - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker network create --gateway $DEV_NETWORK_GATEWAY --subnet $DEV_NETWORK_SUBNET $DEV_NETWORK_NAME || true"
     - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker container create --restart=always --network $DEV_NETWORK_NAME --ip $DEV_DB_CONTAINER_IP --name $DEV_DB_CONTAINER_NAME -v $DEV_DATA_VOLUME_NAME:/var/lib/postgresql/data -e POSTGRES_PASSWORD=$DEV_DB_PW -e POSTGRES_USER=$DEV_DB_USER -e POSTGRES_DB=$DEV_DB_NAME postgres:$POSTGRES_VERS || true"
