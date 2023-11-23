@@ -57,7 +57,7 @@ stable-deploy:
     - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker logout"
     - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker login -u $DEPLOY_ACCESS_TOKEN_USER -p $DEPLOY_ACCESS_TOKEN $CI_REGISTRY"
     - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker pull $IMG_COMMIT"
-    - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker container stop"
+    - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker container stop $PROD_CONTAINER_NAME"
     - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker container rm $PROD_CONTAINER_NAME"
     - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker volume create $PROD_DATA_VOLUME_NAME"
     - ssh -i $DEPLOY_KEY -o StrictHostKeyChecking=no $DEPLOY_ACCESS_TOKEN_USER@$HOST_IP "docker network create --gateway $PROD_NETWORK_GATEWAY --subnet $PROD_NETWORK_SUBNET $PROD_NETWORK_NAME || true"
