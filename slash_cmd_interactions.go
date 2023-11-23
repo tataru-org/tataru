@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/disgoorg/disgo/discord"
@@ -588,82 +587,12 @@ func anyXivCharacterSearchHandler(event *events.ApplicationCommandInteractionCre
 	}
 	xivCharName := eventData.String("xiv_character_name")
 	xivDiscUser := eventData.User("discord_user")
-	searchResponses, err := xivapiCollectCharacterSearchResponses([]XivCharacterSearchRequest{
-		{
-			Token: uuid.New().String(),
-			Name:  xivCharName,
-			Params: []XivApiQueryParam{
-				{
-					Name:  "server",
-					Value: "Behemoth",
-				},
-			},
-			Do: xivapiClient.SearchForCharacter,
-		},
-	})
-	if err != nil {
-		log.Error(err)
-		return
-	}
-	if len(searchResponses) == 0 {
-		content := "No matching search results were found"
-		_, err = event.Client().Rest().UpdateInteractionResponse(
-			event.ApplicationID(),
-			event.Token(),
-			discord.MessageUpdate{
-				Content: &content,
-			},
-		)
-		if err != nil {
-			log.Error(err)
-			return
-		}
-		return
-	}
-	// discord ID -> xiv character ID
-	var xivCharID *string = nil
-	charSearch := searchResponses[0]
-	for j := 0; j < len(charSearch.Results); j++ {
-		if charSearch.Results[j].Name == xivCharName {
-			s := strconv.FormatUint(uint64(charSearch.Results[j].ID), 10)
-			xivCharID = &s
-			break
-		}
-	}
-	if xivCharID == nil {
-		content := "No matching search results were found"
-		_, err = event.Client().Rest().UpdateInteractionResponse(
-			event.ApplicationID(),
-			event.Token(),
-			discord.MessageUpdate{
-				Content: &content,
-			},
-		)
-		if err != nil {
-			log.Error(err)
-			return
-		}
-		return
-	}
-
-	dbcon, err := dbpool.Acquire(ctx)
-	if err != nil {
-		log.Error(err)
-		return
-	}
-	defer dbcon.Release()
-	_, err = dbcon.Exec(ctx, `update bot.member_metadata set member_xiv_id=$1 where member_discord_id=$2`, *xivCharID, xivDiscUser.ID.String())
-	if err != nil {
-		log.Error(err)
-		return
-	}
-	content := fmt.Sprintf("Character ID %s was found with character name %s for discord user %s", *xivCharID, xivCharName, xivDiscUser.ID.String())
-	_, err = event.Client().Rest().UpdateInteractionResponse(
+	err = xivCharacterSearch(
+		xivDiscUser,
+		xivCharName,
+		event.Client(),
 		event.ApplicationID(),
 		event.Token(),
-		discord.MessageUpdate{
-			Content: &content,
-		},
 	)
 	if err != nil {
 		log.Error(err)
@@ -683,82 +612,12 @@ func xivCharacterSearchHandler(event *events.ApplicationCommandInteractionCreate
 	}
 	xivCharName := eventData.String("xiv_character_name")
 	xivDiscUser := event.Member().User
-	searchResponses, err := xivapiCollectCharacterSearchResponses([]XivCharacterSearchRequest{
-		{
-			Token: uuid.New().String(),
-			Name:  xivCharName,
-			Params: []XivApiQueryParam{
-				{
-					Name:  "server",
-					Value: "Behemoth",
-				},
-			},
-			Do: xivapiClient.SearchForCharacter,
-		},
-	})
-	if err != nil {
-		log.Error(err)
-		return
-	}
-	if len(searchResponses) == 0 {
-		content := "No matching search results were found"
-		_, err = event.Client().Rest().UpdateInteractionResponse(
-			event.ApplicationID(),
-			event.Token(),
-			discord.MessageUpdate{
-				Content: &content,
-			},
-		)
-		if err != nil {
-			log.Error(err)
-			return
-		}
-		return
-	}
-	// discord ID -> xiv character ID
-	var xivCharID *string = nil
-	charSearch := searchResponses[0]
-	for j := 0; j < len(charSearch.Results); j++ {
-		if charSearch.Results[j].Name == xivCharName {
-			s := strconv.FormatUint(uint64(charSearch.Results[j].ID), 10)
-			xivCharID = &s
-			break
-		}
-	}
-	if xivCharID == nil {
-		content := "No matching search results were found"
-		_, err = event.Client().Rest().UpdateInteractionResponse(
-			event.ApplicationID(),
-			event.Token(),
-			discord.MessageUpdate{
-				Content: &content,
-			},
-		)
-		if err != nil {
-			log.Error(err)
-			return
-		}
-		return
-	}
-
-	dbcon, err := dbpool.Acquire(ctx)
-	if err != nil {
-		log.Error(err)
-		return
-	}
-	defer dbcon.Release()
-	_, err = dbcon.Exec(ctx, `update bot.member_metadata set member_xiv_id=$1 where member_discord_id=$2`, *xivCharID, xivDiscUser.ID.String())
-	if err != nil {
-		log.Error(err)
-		return
-	}
-	content := fmt.Sprintf("Character ID %s was found with character name %s for discord user %s", *xivCharID, xivCharName, xivDiscUser.ID.String())
-	_, err = event.Client().Rest().UpdateInteractionResponse(
+	err = xivCharacterSearch(
+		xivDiscUser,
+		xivCharName,
+		event.Client(),
 		event.ApplicationID(),
 		event.Token(),
-		discord.MessageUpdate{
-			Content: &content,
-		},
 	)
 	if err != nil {
 		log.Error(err)

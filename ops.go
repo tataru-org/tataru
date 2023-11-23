@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/disgoorg/disgo/bot"
 	"github.com/disgoorg/disgo/discord"
 	"github.com/disgoorg/log"
 	"github.com/disgoorg/snowflake/v2"
@@ -902,4 +903,89 @@ func getSpreadsheetMembers(ss *sheets.Spreadsheet) []*Member {
 		members = append(members, member)
 	}
 	return members
+}
+
+func xivCharacterSearch(
+	user discord.User,
+	xivCharName string,
+	discClient bot.Client,
+	discAppID snowflake.ID,
+	discToken string,
+) error {
+	searchResponses, err := xivapiCollectCharacterSearchResponses([]XivCharacterSearchRequest{
+		{
+			Token: uuid.New().String(),
+			Name:  xivCharName,
+			Params: []XivApiQueryParam{
+				{
+					Name:  "server",
+					Value: "Behemoth",
+				},
+			},
+			Do: xivapiClient.SearchForCharacter,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("xivapiCollectCharacterSearchResponses() error: [%w]", err)
+	}
+	if len(searchResponses) == 0 {
+		content := "No matching search results were found"
+		_, err = discClient.Rest().UpdateInteractionResponse(
+			discAppID,
+			discToken,
+			discord.MessageUpdate{
+				Content: &content,
+			},
+		)
+		if err != nil {
+			return fmt.Errorf("discClient.Rest().UpdateInteractionResponse() 1 error: [%w]", err)
+		}
+		return nil
+	}
+	// discord ID -> xiv character ID
+	var xivCharID *string = nil
+	charSearch := searchResponses[0]
+	for j := 0; j < len(charSearch.Results); j++ {
+		if charSearch.Results[j].Name == xivCharName {
+			s := strconv.FormatUint(uint64(charSearch.Results[j].ID), 10)
+			xivCharID = &s
+			break
+		}
+	}
+	if xivCharID == nil {
+		content := "No matching search results were found"
+		_, err = discClient.Rest().UpdateInteractionResponse(
+			discAppID,
+			discToken,
+			discord.MessageUpdate{
+				Content: &content,
+			},
+		)
+		if err != nil {
+			return fmt.Errorf("discClient.Rest().UpdateInteractionResponse() 2 error: [%w]", err)
+		}
+		return nil
+	}
+
+	dbcon, err := dbpool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("database connection acquire error: [%w]", err)
+	}
+	defer dbcon.Release()
+	_, err = dbcon.Exec(ctx, `update bot.member_metadata set member_xiv_id=$1 where member_discord_id=$2`, *xivCharID, user.ID.String())
+	if err != nil {
+		return fmt.Errorf("update bot.member_metadata error: [%w]", err)
+	}
+	content := fmt.Sprintf("Character ID %s was found with character name %s for discord user %s", *xivCharID, xivCharName, user.ID.String())
+	_, err = discClient.Rest().UpdateInteractionResponse(
+		discAppID,
+		discToken,
+		discord.MessageUpdate{
+			Content: &content,
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("discClient.Rest().UpdateInteractionResponse() 3 error: [%w]", err)
+	}
+	return nil
 }

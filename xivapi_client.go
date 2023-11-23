@@ -10,9 +10,10 @@ import (
 )
 
 const (
-	XivApiRootUrl            = "https://xivapi.com"
-	XivApiCharacterUrl       = XivApiRootUrl + "/character"
-	XivApiCharacterSearchUrl = XivApiCharacterUrl + "/search"
+	XivApiRootUrl              = "https://xivapi.com"
+	XivApiCharacterUrl         = XivApiRootUrl + "/character"
+	XivApiCharacterSearchUrl   = XivApiCharacterUrl + "/search"
+	XivCharacterIDRegexPattern = `^[0-9]+$`
 )
 
 type XivCharacterData string
