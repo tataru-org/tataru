@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"strconv"
 	"time"
 
@@ -29,8 +29,7 @@ func RetryXivApiLodestoneRequest(req interface{}, prevLimit, maxWaitSeconds floa
 	case XivCharacterSearchRequest:
 		resp, err := r.Do(r.Name, r.Params...)
 		if err != nil {
-			log.Error(err)
-			return nil, err
+			return nil, fmt.Errorf("XivCharacterSearchRequest send request error: [%w]", err)
 		}
 		log.Debugf("retry xivapi lodestone character search request api reponse status code: %d", resp.StatusCode)
 		if resp.StatusCode == 429 {
@@ -42,28 +41,26 @@ func RetryXivApiLodestoneRequest(req interface{}, prevLimit, maxWaitSeconds floa
 			} else {
 				initWait, err = strconv.ParseFloat(durStr, 64)
 				if err != nil {
-					log.Error(err)
-					return nil, err
+					return nil, fmt.Errorf("strconv.ParseFloat() 1 error: [%w]", err)
 				}
 				hasSuggestedRetryDur = true
 			}
 			return RetryXivApiLodestoneRequest(r, initWait, 3600, hasSuggestedRetryDur)
 		}
-		respBody, err := ioutil.ReadAll(resp.Body)
+		respBody, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("io.ReadAll() 1 error: [%w]", err)
 		}
 		var characterSearch XivCharacterSearch
 		err = json.Unmarshal(respBody, &characterSearch)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("json.Unmarshal() 1 error: [%w]", err)
 		}
 		out = characterSearch
 	case XivCharacterRequest:
 		resp, err := r.Do(r.XivID, r.Data...)
 		if err != nil {
-			log.Error(err)
-			return nil, err
+			return nil, fmt.Errorf("XivCharacterRequest send request error: [%w]", err)
 		}
 		log.Debugf("retry xivapi lodestone character request api reponse status code: %d", resp.StatusCode)
 		if resp.StatusCode == 429 {
@@ -75,21 +72,20 @@ func RetryXivApiLodestoneRequest(req interface{}, prevLimit, maxWaitSeconds floa
 			} else {
 				initWait, err = strconv.ParseFloat(durStr, 64)
 				if err != nil {
-					log.Error(err)
-					return nil, err
+					return nil, fmt.Errorf("strconv.ParseFloat() 2 error: [%w]", err)
 				}
 				hasSuggestedRetryDur = true
 			}
 			return RetryXivApiLodestoneRequest(r, initWait, 3600, hasSuggestedRetryDur)
 		}
-		respBody, err := ioutil.ReadAll(resp.Body)
+		respBody, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("io.ReadAll() 2 error: [%w]", err)
 		}
 		var character XivCharacter
 		err = json.Unmarshal(respBody, &character)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("json.Unmarshal() 2 error: [%w]", err)
 		}
 		out = character
 	default:
@@ -141,7 +137,7 @@ func xivApiLodestoneRequestRateLimiter(rateLimit, maxRetryDuration float64, reqs
 					continue
 				}
 			} else {
-				respBody, err := ioutil.ReadAll(resp.Body)
+				respBody, err := io.ReadAll(resp.Body)
 				if err != nil {
 					log.Error(err)
 					continue
@@ -193,8 +189,15 @@ func xivApiLodestoneRequestRateLimiter(rateLimit, maxRetryDuration float64, reqs
 					log.Error(err)
 					continue
 				}
+			} else if resp.StatusCode == 404 {
+				respBody, err := io.ReadAll(resp.Body)
+				if err != nil {
+					log.Error(err)
+					continue
+				}
+				log.Error(string(respBody))
 			} else {
-				respBody, err := ioutil.ReadAll(resp.Body)
+				respBody, err := io.ReadAll(resp.Body)
 				if err != nil {
 					log.Error(err)
 					continue

@@ -2,7 +2,8 @@ package main
 
 import (
 	"encoding/json"
-	"io/ioutil"
+	"fmt"
+	"os"
 	"regexp"
 
 	"google.golang.org/api/drive/v3"
@@ -14,14 +15,14 @@ func isGmailEmailAddress(email string) bool {
 }
 
 func GetPermissions(mountSpreadsheetPermissionsFilepath string) ([]*drive.Permission, error) {
-	rawJson, err := ioutil.ReadFile(mountSpreadsheetPermissionsFilepath)
+	rawJson, err := os.ReadFile(mountSpreadsheetPermissionsFilepath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("os.ReadFile() error: [%w]", err)
 	}
 	var perms []*drive.Permission
 	err = json.Unmarshal(rawJson, &perms)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("json.Unmarshal() error: [%w]", err)
 	}
 	return perms, nil
 }

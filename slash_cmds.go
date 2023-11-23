@@ -10,7 +10,7 @@ func createSlashCommands() []discord.ApplicationCommandCreate {
 	return []discord.ApplicationCommandCreate{
 		discord.SlashCommandCreate{
 			Name:                     "set_role",
-			Description:              "Set the role to watch for the mount spreadsheet",
+			Description:              "Set the mount farm role to watch for discord member updates",
 			DefaultMemberPermissions: &adminPerm,
 			Options: []discord.ApplicationCommandOption{
 				discord.ApplicationCommandOptionRole{
@@ -22,26 +22,26 @@ func createSlashCommands() []discord.ApplicationCommandCreate {
 		},
 		discord.SlashCommandCreate{
 			Name:                     "unset_role",
-			Description:              "Unset the role to watch for the mount spreadsheet",
+			Description:              "Unset the mount farm role to watch for discord member updates",
 			DefaultMemberPermissions: &adminPerm,
 		},
 		discord.SlashCommandCreate{
-			Name:                     "force_member_sync",
-			Description:              "Force syncs the members in the mount spreadsheet with discord",
+			Name:                     "spreadsheet_discord_member_sync",
+			Description:              "Syncs the spreadsheet with discord member data",
 			DefaultMemberPermissions: &adminPerm,
 		},
 		discord.SlashCommandCreate{
-			Name:                     "sync_formatting",
-			Description:              "Syncs the spreadsheet's formatting that is specified on disk",
+			Name:                     "sync_spreadsheet_styling",
+			Description:              "Syncs the spreadsheet styling with the stored styling data",
 			DefaultMemberPermissions: &adminPerm,
 		},
 		discord.SlashCommandCreate{
 			Name:                     "sync_file_perms",
-			Description:              "Syncs the spreadsheet's file permissions that are specified on disk",
+			Description:              "Syncs the spreadsheet file permissions with the stored file permissions data",
 			DefaultMemberPermissions: &adminPerm,
 		},
 		discord.SlashCommandCreate{
-			Name:                     "try_xiv_char_search",
+			Name:                     "any_xiv_char_search",
 			Description:              "Attempts to search for a FF14 character's ID by the given character name and save it",
 			DefaultMemberPermissions: &adminPerm,
 			Options: []discord.ApplicationCommandOption{
@@ -58,7 +58,18 @@ func createSlashCommands() []discord.ApplicationCommandCreate {
 			},
 		},
 		discord.SlashCommandCreate{
-			Name:                     "map_xiv_char_id",
+			Name:        "xiv_char_search",
+			Description: "Attempts to search for the user's FF14 character's ID by the given character name and save it",
+			Options: []discord.ApplicationCommandOption{
+				discord.ApplicationCommandOptionString{
+					Name:        "xiv_character_name",
+					Description: "The entire name of a FF14 character",
+					Required:    true,
+				},
+			},
+		},
+		discord.SlashCommandCreate{
+			Name:                     "map_any_xiv_char_id",
 			Description:              "Maps a FF14 character's ID to the given discord user",
 			DefaultMemberPermissions: &adminPerm,
 			Options: []discord.ApplicationCommandOption{
@@ -75,13 +86,24 @@ func createSlashCommands() []discord.ApplicationCommandCreate {
 			},
 		},
 		discord.SlashCommandCreate{
-			Name:                     "force_scan_xiv_mounts",
-			Description:              "Force scans XIVAPI for mounts",
+			Name:        "map_xiv_char_id",
+			Description: "Maps a FF14 character's ID to the discord user that used the command",
+			Options: []discord.ApplicationCommandOption{
+				discord.ApplicationCommandOptionString{
+					Name:        "xiv_character_id",
+					Description: "The FF14 character's ID",
+					Required:    true,
+				},
+			},
+		},
+		discord.SlashCommandCreate{
+			Name:                     "scan_xiv_mounts",
+			Description:              "Scans XIVAPI for mounts",
 			DefaultMemberPermissions: &adminPerm,
 		},
 		discord.SlashCommandCreate{
-			Name:                     "force_update_member_names",
-			Description:              "Force updates member names",
+			Name:                     "update_member_names",
+			Description:              "Updates member names",
 			DefaultMemberPermissions: &adminPerm,
 		},
 	}

@@ -10,9 +10,10 @@ import (
 )
 
 const (
-	XivApiRootUrl            = "https://xivapi.com"
-	XivApiCharacterUrl       = XivApiRootUrl + "/character"
-	XivApiCharacterSearchUrl = XivApiCharacterUrl + "/search"
+	XivApiRootUrl              = "https://xivapi.com"
+	XivApiCharacterUrl         = XivApiRootUrl + "/character"
+	XivApiCharacterSearchUrl   = XivApiCharacterUrl + "/search"
+	XivCharacterIDRegexPattern = `^[0-9]+$`
 )
 
 type XivCharacterData string
@@ -63,11 +64,14 @@ type XivCharacterRequest struct {
 }
 
 /*
-	required params:
-		name: Must replace spaces with '+'
-	optional params:
-		server
-		page
+required params:
+
+	name: Must replace spaces with '+'
+
+optional params:
+
+	server
+	page
 */
 func (xiv *XivApiClient) SearchForCharacter(name string, params ...XivApiQueryParam) (*http.Response, error) {
 	queryName := strings.ReplaceAll(name, " ", "+")
@@ -78,7 +82,7 @@ func (xiv *XivApiClient) SearchForCharacter(name string, params ...XivApiQueryPa
 	}
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("http.NewRequest() error: [%w]", err)
 	}
 	log.Debug("sending character search request for %s", name)
 	return xiv.c.Do(req)
@@ -86,14 +90,16 @@ func (xiv *XivApiClient) SearchForCharacter(name string, params ...XivApiQueryPa
 }
 
 /*
-	required params:
-		xivid
-	optional params:
-		data:
-			Implemented data structures:
-				XivCharacterDataFreeCompanyMembers
-				XivCharacterDataMountsMinions
+required params:
 
+	xivid
+
+optional params:
+
+	data:
+		Implemented data structures:
+			XivCharacterDataFreeCompanyMembers
+			XivCharacterDataMountsMinions
 */
 func (xiv *XivApiClient) GetCharacter(xivid string, data ...XivCharacterData) (*http.Response, error) {
 	url := fmt.Sprintf("%s/%s?private_key=%s", XivApiCharacterUrl, xivid, xiv.key)
@@ -106,7 +112,7 @@ func (xiv *XivApiClient) GetCharacter(xivid string, data ...XivCharacterData) (*
 	}
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("http.NewRequest() error: [%w]", err)
 	}
 	log.Debug("sending character request for %s", xivid)
 	return xiv.c.Do(req)

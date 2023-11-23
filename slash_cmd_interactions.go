@@ -2,14 +2,11 @@ package main
 
 import (
 	"fmt"
-	"runtime/debug"
-	"strconv"
 	"strings"
 
 	"github.com/disgoorg/disgo/discord"
 	"github.com/disgoorg/disgo/events"
 	"github.com/disgoorg/log"
-	"github.com/google/uuid"
 	"google.golang.org/api/drive/v3"
 	"google.golang.org/api/sheets/v4"
 )
@@ -23,14 +20,12 @@ func setRoleHandler(event *events.ApplicationCommandInteractionCreate) {
 	err := event.DeferCreateMessage(true)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 	// check if a role ref exists
 	dbcon, err := dbpool.Acquire(ctx)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 	defer dbcon.Release()
@@ -40,7 +35,6 @@ func setRoleHandler(event *events.ApplicationCommandInteractionCreate) {
 	if err != nil {
 
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 	if hasRoleID {
@@ -54,7 +48,6 @@ func setRoleHandler(event *events.ApplicationCommandInteractionCreate) {
 		)
 		if err != nil {
 			log.Error(err)
-			log.Error(debug.Stack())
 			return
 		}
 	} else {
@@ -62,9 +55,7 @@ func setRoleHandler(event *events.ApplicationCommandInteractionCreate) {
 		role := eventData.Role("role")
 		_, err = dbcon.Exec(ctx, `insert into bot.role_ref(role_id) values($1)`, role.ID.String())
 		if err != nil {
-
 			log.Error(err)
-			log.Error(debug.Stack())
 			return
 		}
 		content := fmt.Sprintf("Role %s has been set.", role.Name)
@@ -77,7 +68,6 @@ func setRoleHandler(event *events.ApplicationCommandInteractionCreate) {
 		)
 		if err != nil {
 			log.Error(err)
-			log.Error(debug.Stack())
 		}
 	}
 }
@@ -91,14 +81,12 @@ func unsetRoleHandler(event *events.ApplicationCommandInteractionCreate) {
 	err := event.DeferCreateMessage(true)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 	// check if a role ref exists
 	dbcon, err := dbpool.Acquire(ctx)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 	defer dbcon.Release()
@@ -107,7 +95,6 @@ func unsetRoleHandler(event *events.ApplicationCommandInteractionCreate) {
 	err = row.Scan(&hasRoleID)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 	if hasRoleID {
@@ -115,7 +102,6 @@ func unsetRoleHandler(event *events.ApplicationCommandInteractionCreate) {
 		_, err = dbcon.Exec(ctx, `truncate table bot.role_ref`)
 		if err != nil {
 			log.Error(err)
-			log.Error(debug.Stack())
 			return
 		}
 		content := "Role has been unset."
@@ -128,7 +114,6 @@ func unsetRoleHandler(event *events.ApplicationCommandInteractionCreate) {
 		)
 		if err != nil {
 			log.Error(err)
-			log.Error(debug.Stack())
 			return
 		}
 	} else {
@@ -142,28 +127,25 @@ func unsetRoleHandler(event *events.ApplicationCommandInteractionCreate) {
 		)
 		if err != nil {
 			log.Error(err)
-			log.Error(debug.Stack())
 			return
 		}
 	}
 }
 
-func forceMemberSyncHandler(event *events.ApplicationCommandInteractionCreate) {
+func spreadsheetDiscordMemberSyncHandler(event *events.ApplicationCommandInteractionCreate) {
 	eventData := event.SlashCommandInteractionData()
-	if eventData.CommandName() != "force_member_sync" {
+	if eventData.CommandName() != "spreadsheet_discord_member_sync" {
 		return
 	}
 
 	err := event.DeferCreateMessage(true)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 	dbcon, err := dbpool.Acquire(ctx)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 	defer dbcon.Release()
@@ -172,12 +154,11 @@ func forceMemberSyncHandler(event *events.ApplicationCommandInteractionCreate) {
 	var fileID string
 	row := dbcon.QueryRow(
 		ctx,
-		"select file_id from bot.file_ref",
+		"select file_gcp_id from bot.file_ref",
 	)
 	err = row.Scan(&fileID)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 	dbcon.Release()
@@ -185,14 +166,12 @@ func forceMemberSyncHandler(event *events.ApplicationCommandInteractionCreate) {
 	members, err := event.Client().Rest().GetMembers(*event.GuildID(), guildMemberCountRequestLimit, nullSnowflake)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 	// sync the spreadsheet with the discord members
 	err = syncRoleMembers(FileID(fileID), members)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 	log.Debug("force member sync successfully completed")
@@ -206,27 +185,24 @@ func forceMemberSyncHandler(event *events.ApplicationCommandInteractionCreate) {
 	)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 }
 
-func syncFormattingHandler(event *events.ApplicationCommandInteractionCreate) {
+func syncSpreadsheetStylingHandler(event *events.ApplicationCommandInteractionCreate) {
 	eventData := event.SlashCommandInteractionData()
-	if eventData.CommandName() != "sync_formatting" {
+	if eventData.CommandName() != "sync_spreadsheet_styling" {
 		return
 	}
 
 	err := event.DeferCreateMessage(true)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 	dbcon, err := dbpool.Acquire(ctx)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 	defer dbcon.Release()
@@ -234,31 +210,27 @@ func syncFormattingHandler(event *events.ApplicationCommandInteractionCreate) {
 	var fileID *string
 	row := dbcon.QueryRow(
 		ctx,
-		"select file_id from bot.file_ref",
+		"select file_gcp_id from bot.file_ref",
 	)
 	err = row.Scan(&fileID)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 	dbcon.Release()
 	if fileID == nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 
-	columnMap, err := NewColumnMap(mountSpreadsheetColumnDataFilepath)
+	columnMap, err := NewColumnMap()
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 	spreadsheet, err := gsheetsSvc.Spreadsheets.Get(*fileID).IncludeGridData(true).Do()
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 
@@ -269,9 +241,15 @@ func syncFormattingHandler(event *events.ApplicationCommandInteractionCreate) {
 		row := sheet.Data[0].RowData[0]
 		vals := make([]*sheets.CellData, len(row.Values))
 		for k := 0; k < len(row.Values); k++ {
-			colName := string(columnMap.Mapping[SheetIndex(i)][ColumnIndex(k)].Name)
+			colName := string(columnMap.Mapping[SheetMetadata{
+				ID:    SheetID(sheet.Properties.SheetId),
+				Index: SheetIndex(sheet.Properties.Index),
+			}][ColumnIndex(k)].Name)
 			vals[k] = &sheets.CellData{
-				UserEnteredFormat: columnMap.Mapping[SheetIndex(i)][ColumnIndex(k)].HeaderFormat,
+				UserEnteredFormat: columnMap.Mapping[SheetMetadata{
+					ID:    SheetID(sheet.Properties.SheetId),
+					Index: SheetIndex(sheet.Properties.Index),
+				}][ColumnIndex(k)].HeaderFormat,
 				UserEnteredValue: &sheets.ExtendedValue{
 					StringValue: &colName,
 				},
@@ -302,7 +280,10 @@ func syncFormattingHandler(event *events.ApplicationCommandInteractionCreate) {
 			vals := make([]*sheets.CellData, len(row.Values))
 			for k := 0; k < len(row.Values); k++ {
 				vals[k] = &sheets.CellData{
-					UserEnteredFormat: columnMap.Mapping[SheetIndex(i)][ColumnIndex(k)].ColumnFormat,
+					UserEnteredFormat: columnMap.Mapping[SheetMetadata{
+						ID:    SheetID(sheet.Properties.SheetId),
+						Index: SheetIndex(sheet.Properties.Index),
+					}][ColumnIndex(k)].ColumnFormat,
 				}
 			}
 			rowData[j] = &sheets.RowData{
@@ -338,7 +319,6 @@ func syncFormattingHandler(event *events.ApplicationCommandInteractionCreate) {
 	)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 }
@@ -352,13 +332,11 @@ func syncFilePermsHandler(event *events.ApplicationCommandInteractionCreate) {
 	err := event.DeferCreateMessage(true)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 	dbcon, err := dbpool.Acquire(ctx)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 	defer dbcon.Release()
@@ -366,24 +344,21 @@ func syncFilePermsHandler(event *events.ApplicationCommandInteractionCreate) {
 	var fileID *string
 	row := dbcon.QueryRow(
 		ctx,
-		"select file_id from bot.file_ref",
+		"select file_gcp_id from bot.file_ref",
 	)
 	err = row.Scan(&fileID)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 	if fileID == nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 	// get perms from db
-	rows, err := dbcon.Query(ctx, `select perm_id, email, role, role_type from bot.permissions`)
+	rows, err := dbcon.Query(ctx, `select perm_gcp_id, email, role, role_type from bot.permissions`)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 	dbPerms := map[string]*drive.Permission{}
@@ -395,7 +370,6 @@ func syncFilePermsHandler(event *events.ApplicationCommandInteractionCreate) {
 		err = rows.Scan(&id, &email, &role, &roleType)
 		if err != nil {
 			log.Error(err)
-			log.Error(debug.Stack())
 			return
 		}
 		dbPerms[id] = &drive.Permission{
@@ -409,7 +383,6 @@ func syncFilePermsHandler(event *events.ApplicationCommandInteractionCreate) {
 	permsOnDisk, err := GetPermissions(mountSpreadsheetPermissionsFilepath)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 	// get perms from
@@ -502,7 +475,6 @@ func syncFilePermsHandler(event *events.ApplicationCommandInteractionCreate) {
 		err = gdriveSvc.Permissions.Delete(*fileID, permIDsToDelete[i]).SupportsAllDrives(true).Do()
 		if err != nil {
 			log.Error(err)
-			log.Error(debug.Stack())
 			return
 		}
 	}
@@ -512,7 +484,6 @@ func syncFilePermsHandler(event *events.ApplicationCommandInteractionCreate) {
 		_, err = gdriveSvc.Permissions.Update(*fileID, permID, perm).SupportsAllDrives(true).Do()
 		if err != nil {
 			log.Error(err)
-			log.Error(debug.Stack())
 			return
 		}
 	}
@@ -523,7 +494,6 @@ func syncFilePermsHandler(event *events.ApplicationCommandInteractionCreate) {
 		p, err := gdriveSvc.Permissions.Create(*fileID, permsToAdd[i]).SupportsAllDrives(true).Do()
 		if err != nil {
 			log.Error(err)
-			log.Error(debug.Stack())
 			return
 		}
 		newPermMap[p.Id] = &drive.Permission{
@@ -537,15 +507,13 @@ func syncFilePermsHandler(event *events.ApplicationCommandInteractionCreate) {
 	tx, err := dbcon.Begin(ctx)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 	// delete perms from db
 	for i := 0; i < len(permIDsToDelete); i++ {
-		_, err = tx.Exec(ctx, `delete from bot.permissions where perm_id=$1`, permIDsToDelete[i])
+		_, err = tx.Exec(ctx, `delete from bot.permissions where perm_gcp_id=$1`, permIDsToDelete[i])
 		if err != nil {
 			log.Error(err)
-			log.Error(debug.Stack())
 			return
 		}
 	}
@@ -554,7 +522,7 @@ func syncFilePermsHandler(event *events.ApplicationCommandInteractionCreate) {
 	for id, perm := range newPermMap {
 		_, err = tx.Exec(
 			ctx,
-			`insert into bot.permissions(file_id,perm_id,email,role,role_type) values($1,$2,$3,$4,$5)`,
+			`insert into bot.permissions(file_gcp_id,perm_gcp_id,email,role,role_type) values($1,$2,$3,$4,$5)`,
 			*fileID,
 			id,
 			perm.EmailAddress,
@@ -563,7 +531,6 @@ func syncFilePermsHandler(event *events.ApplicationCommandInteractionCreate) {
 		)
 		if err != nil {
 			log.Error(err)
-			log.Error(debug.Stack())
 			return
 		}
 	}
@@ -574,13 +541,12 @@ func syncFilePermsHandler(event *events.ApplicationCommandInteractionCreate) {
 			ctx,
 			`update bot.permissions set
 				role=$1
-			where perm_id=$2`,
+			where perm_gcp_id=$2`,
 			perm.Role,
 			permID,
 		)
 		if err != nil {
 			log.Error(err)
-			log.Error(debug.Stack())
 			return
 		}
 	}
@@ -588,7 +554,6 @@ func syncFilePermsHandler(event *events.ApplicationCommandInteractionCreate) {
 	err = tx.Commit(ctx)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 	dbcon.Release()
@@ -604,114 +569,86 @@ func syncFilePermsHandler(event *events.ApplicationCommandInteractionCreate) {
 	)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 }
 
-func tryXivCharacterSearchHandler(event *events.ApplicationCommandInteractionCreate) {
+func anyXivCharacterSearchHandler(event *events.ApplicationCommandInteractionCreate) {
 	eventData := event.SlashCommandInteractionData()
-	if eventData.CommandName() != "try_xiv_char_search" {
+	if eventData.CommandName() != "any_xiv_char_search" {
 		return
 	}
 
 	err := event.DeferCreateMessage(true)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 	xivCharName := eventData.String("xiv_character_name")
 	xivDiscUser := eventData.User("discord_user")
-	searchResponses, err := xivapiCollectCharacterSearchResponses([]XivCharacterSearchRequest{
-		{
-			Token: uuid.New().String(),
-			Name:  xivCharName,
-			Params: []XivApiQueryParam{
-				{
-					Name:  "server",
-					Value: "Behemoth",
-				},
-			},
-			Do: xivapiClient.SearchForCharacter,
-		},
-	})
-	if err != nil {
-		log.Error(err)
-		log.Error(debug.Stack())
-		return
-	}
-	if len(searchResponses) == 0 {
-		content := "No matching search results were found"
-		_, err = event.Client().Rest().UpdateInteractionResponse(
-			event.ApplicationID(),
-			event.Token(),
-			discord.MessageUpdate{
-				Content: &content,
-			},
-		)
-		if err != nil {
-			log.Error(err)
-			log.Error(debug.Stack())
-			return
-		}
-		return
-	}
-	// discord ID -> xiv character ID
-	var xivCharID *string = nil
-	charSearch := searchResponses[0]
-	for j := 0; j < len(charSearch.Results); j++ {
-		if charSearch.Results[j].Name == xivCharName {
-			s := strconv.FormatUint(uint64(charSearch.Results[j].ID), 10)
-			xivCharID = &s
-			break
-		}
-	}
-	if xivCharID == nil {
-		content := "No matching search results were found"
-		_, err = event.Client().Rest().UpdateInteractionResponse(
-			event.ApplicationID(),
-			event.Token(),
-			discord.MessageUpdate{
-				Content: &content,
-			},
-		)
-		if err != nil {
-			log.Error(err)
-			log.Error(debug.Stack())
-			return
-		}
-		return
-	}
-
-	dbcon, err := dbpool.Acquire(ctx)
-	if err != nil {
-		log.Error(err)
-		log.Error(debug.Stack())
-		return
-	}
-	defer dbcon.Release()
-	_, err = dbcon.Exec(ctx, `update bot.members set member_xiv_id=$1 where member_id=$2`, *xivCharID, xivDiscUser.ID.String())
-	if err != nil {
-		log.Error(err)
-		log.Error(debug.Stack())
-		return
-	}
-	content := fmt.Sprintf("Character ID %s was found with character name %s for discord user %s", *xivCharID, xivCharName, xivDiscUser.ID.String())
-	_, err = event.Client().Rest().UpdateInteractionResponse(
+	err = xivCharacterSearch(
+		xivDiscUser,
+		xivCharName,
+		event.Client(),
 		event.ApplicationID(),
 		event.Token(),
-		discord.MessageUpdate{
-			Content: &content,
-		},
 	)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 	}
 }
 
-func mapXivCharIDHandler(event *events.ApplicationCommandInteractionCreate) {
+func xivCharacterSearchHandler(event *events.ApplicationCommandInteractionCreate) {
+	eventData := event.SlashCommandInteractionData()
+	if eventData.CommandName() != "xiv_char_search" {
+		return
+	}
+
+	err := event.DeferCreateMessage(true)
+	if err != nil {
+		log.Error(err)
+		return
+	}
+	xivCharName := eventData.String("xiv_character_name")
+	xivDiscUser := event.Member().User
+	err = xivCharacterSearch(
+		xivDiscUser,
+		xivCharName,
+		event.Client(),
+		event.ApplicationID(),
+		event.Token(),
+	)
+	if err != nil {
+		log.Error(err)
+	}
+}
+
+func mapAnyXivCharacterIDHandler(event *events.ApplicationCommandInteractionCreate) {
+	eventData := event.SlashCommandInteractionData()
+	if eventData.CommandName() != "map_any_xiv_char_id" {
+		return
+	}
+
+	err := event.DeferCreateMessage(true)
+	if err != nil {
+		log.Error(err)
+		return
+	}
+	xivCharID := eventData.String("xiv_character_id")
+	xivDiscUser := eventData.User("discord_user")
+	err = mapXivCharacterID(
+		xivDiscUser,
+		xivCharID,
+		event.Client(),
+		event.ApplicationID(),
+		event.Token(),
+	)
+	if err != nil {
+		log.Error(err)
+	}
+}
+
+func mapXivCharacterIDHandler(event *events.ApplicationCommandInteractionCreate) {
 	eventData := event.SlashCommandInteractionData()
 	if eventData.CommandName() != "map_xiv_char_id" {
 		return
@@ -720,84 +657,36 @@ func mapXivCharIDHandler(event *events.ApplicationCommandInteractionCreate) {
 	err := event.DeferCreateMessage(true)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 	xivCharID := eventData.String("xiv_character_id")
-	xivDiscUser := eventData.User("discord_user")
-	resps, err := xivapiCollectCharacterResponses([]XivCharacterRequest{
-		{
-			Token: uuid.New().String(),
-			XivID: xivCharID,
-			Data:  nil,
-			Do:    xivapiClient.GetCharacter,
-		},
-	})
-	if err != nil {
-		log.Error(err)
-		log.Error(debug.Stack())
-		return
-	}
-	if len(resps) == 0 {
-		content := fmt.Sprintf("No matching character was found for character ID %s", xivCharID)
-		_, err = event.Client().Rest().UpdateInteractionResponse(
-			event.ApplicationID(),
-			event.Token(),
-			discord.MessageUpdate{
-				Content: &content,
-			},
-		)
-		if err != nil {
-			log.Error(err)
-			log.Error(debug.Stack())
-			return
-		}
-		return
-	}
-	dbcon, err := dbpool.Acquire(ctx)
-	if err != nil {
-		log.Error(err)
-		log.Error(debug.Stack())
-		return
-	}
-	defer dbcon.Release()
-	_, err = dbcon.Exec(ctx, `update bot.members set member_xiv_id=$1 where member_id=$2`, xivCharID, xivDiscUser.ID.String())
-	if err != nil {
-		log.Error(err)
-		log.Error(debug.Stack())
-		return
-	}
-	dbcon.Release()
-	content := fmt.Sprintf("Character ID %s was found for discord user %s", xivCharID, xivDiscUser.ID.String())
-	_, err = event.Client().Rest().UpdateInteractionResponse(
+	xivDiscUser := event.Member().User
+	err = mapXivCharacterID(
+		xivDiscUser,
+		xivCharID,
+		event.Client(),
 		event.ApplicationID(),
 		event.Token(),
-		discord.MessageUpdate{
-			Content: &content,
-		},
 	)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 	}
 }
 
-func forceScanXivMountsHandler(event *events.ApplicationCommandInteractionCreate) {
+func scanXivMountsHandler(event *events.ApplicationCommandInteractionCreate) {
 	eventData := event.SlashCommandInteractionData()
-	if eventData.CommandName() != "force_scan_xiv_mounts" {
+	if eventData.CommandName() != "scan_xiv_mounts" {
 		return
 	}
 
 	err := event.DeferCreateMessage(true)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 	err = xivMountScan()
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 	content := "Force mount scan completed"
@@ -810,33 +699,29 @@ func forceScanXivMountsHandler(event *events.ApplicationCommandInteractionCreate
 	)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 	}
 }
 
-func forceUpdateMemberNamesHandler(event *events.ApplicationCommandInteractionCreate) {
+func updateMemberNamesHandler(event *events.ApplicationCommandInteractionCreate) {
 	eventData := event.SlashCommandInteractionData()
-	if eventData.CommandName() != "force_update_member_names" {
+	if eventData.CommandName() != "update_member_names" {
 		return
 	}
 
 	err := event.DeferCreateMessage(true)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 	// get all members from discord
 	discMembers, err := event.Client().Rest().GetMembers(*event.GuildID(), guildMemberCountRequestLimit, nullSnowflake)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 	err = discordNicknameScan(discMembers)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 		return
 	}
 	content := "Names updated in spreadsheet"
@@ -849,6 +734,5 @@ func forceUpdateMemberNamesHandler(event *events.ApplicationCommandInteractionCr
 	)
 	if err != nil {
 		log.Error(err)
-		log.Error(debug.Stack())
 	}
 }
