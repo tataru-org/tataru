@@ -402,7 +402,7 @@ func syncRoleMembers(id FileID, guildMembers []discord.Member) error {
 		return nil
 	}
 
-	// get the members to add to the spreadsheet
+	// get the members to add to the spreadsheet based on the differences between discord and the database
 	addMembers := []discord.Member{}
 	for i := 0; i < len(roleMembers); i++ {
 		memberAlreadyExists := false
@@ -415,7 +415,33 @@ func syncRoleMembers(id FileID, guildMembers []discord.Member) error {
 			addMembers = append(addMembers, roleMembers[i])
 		}
 	}
-	log.Debug("got members to add")
+	log.Debug("got members to add based on differences between discord and the database")
+	// get members to add to the spreadsheet based on differences between the database and the spreadsheet
+	ssMembers := getSpreadsheetMembers(spreadsheet)
+	for i := 0; i < len(filteredDBMembers); i++ {
+		existsInSpreadsheet := false
+		for j := 0; j < len(ssMembers); j++ {
+			if ssMembers[j].id == filteredDBMembers[i].id {
+				existsInSpreadsheet = true
+				break
+			}
+		}
+		if !existsInSpreadsheet {
+			snowMemberID, err := snowflake.Parse(string(filteredDBMembers[i].id))
+			if err != nil {
+				return fmt.Errorf("snowflake.Parse() error: [%w]", err)
+			}
+			m := discord.Member{
+				User: discord.User{
+					ID:       snowMemberID,
+					Username: filteredDBMembers[i].name,
+				},
+				Nick: nil,
+			}
+			addMembers = append(addMembers, m)
+		}
+	}
+	log.Debug("got members to add based on differences between the database and the spreadsheet")
 	// add the members' rows in the spreadsheet
 	counter := 0
 	requests = make([]*sheets.Request, len(columnMap.Mapping))
@@ -499,7 +525,22 @@ func syncRoleMembers(id FileID, guildMembers []discord.Member) error {
 		} else {
 			name = *addMembers[i].Nick
 		}
-		_, err = tx.Exec(ctx, `insert into bot.member_metadata(member_discord_id,member_name) values($1,$2)`, addMembers[i].User.ID.String(), name)
+		_, err = tx.Exec(
+			ctx,
+			`
+			insert into bot.member_metadata(
+				member_discord_id,
+				member_name
+			) values(
+				$1,
+				$2
+			) on conflict (
+				member_discord_id
+			) do nothing
+			`,
+			addMembers[i].User.ID.String(),
+			name,
+		)
 		if err != nil {
 			return fmt.Errorf("add member to db error; member_discord_id=%s: [%w]", addMembers[i].User.ID.String(), err)
 		}
@@ -846,4 +887,19 @@ func discordNicknameScan(discMembers []discord.Member) error {
 		}
 	}
 	return nil
+}
+
+func getSpreadsheetMembers(ss *sheets.Spreadsheet) []*Member {
+	members := []*Member{}
+	testSheet := ss.Sheets[0]
+	numRows := len(testSheet.Data[0].RowData) - 1
+	for i := 0; i < numRows; i++ {
+		row := testSheet.Data[0].RowData[i+1]
+		member := &Member{
+			id:   MemberID(*row.Values[0].EffectiveValue.StringValue),
+			name: *row.Values[1].EffectiveValue.StringValue,
+		}
+		members = append(members, member)
+	}
+	return members
 }
