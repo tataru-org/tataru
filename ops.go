@@ -987,5 +987,71 @@ func xivCharacterSearch(
 	if err != nil {
 		return fmt.Errorf("discClient.Rest().UpdateInteractionResponse() 3 error: [%w]", err)
 	}
+	err = mapXivCharacterID(
+		user,
+		*xivCharID,
+		discClient,
+		discAppID,
+		discToken,
+	)
+	if err != nil {
+		return fmt.Errorf("mapXivCharacterID() error: [%w]", err)
+	}
+	return nil
+}
+
+func mapXivCharacterID(
+	user discord.User,
+	xivCharID string,
+	discClient bot.Client,
+	discAppID snowflake.ID,
+	discToken string,
+) error {
+	resps, err := xivapiCollectCharacterResponses([]XivCharacterRequest{
+		{
+			Token: uuid.New().String(),
+			XivID: xivCharID,
+			Data:  nil,
+			Do:    xivapiClient.GetCharacter,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("xivapiCollectCharacterResponses() error: [%w]", err)
+	}
+	if len(resps) == 0 {
+		content := fmt.Sprintf("No matching character was found for character ID %s", xivCharID)
+		_, err = discClient.Rest().UpdateInteractionResponse(
+			discAppID,
+			discToken,
+			discord.MessageUpdate{
+				Content: &content,
+			},
+		)
+		if err != nil {
+			return fmt.Errorf("discClient.Rest().UpdateInteractionResponse() 1 error: [%w]", err)
+		}
+		return nil
+	}
+	dbcon, err := dbpool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("database connection acquire error: [%w]", err)
+	}
+	defer dbcon.Release()
+	_, err = dbcon.Exec(ctx, `update bot.member_metadata set member_xiv_id=$1 where member_discord_id=$2`, xivCharID, user.ID.String())
+	if err != nil {
+		return fmt.Errorf("update bot.member_metadata error: [%w]", err)
+	}
+	dbcon.Release()
+	content := fmt.Sprintf("Character ID %s was found for discord user %s", xivCharID, user.ID.String())
+	_, err = discClient.Rest().UpdateInteractionResponse(
+		discAppID,
+		discToken,
+		discord.MessageUpdate{
+			Content: &content,
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("discClient.Rest().UpdateInteractionResponse() 2 error: [%w]", err)
+	}
 	return nil
 }
