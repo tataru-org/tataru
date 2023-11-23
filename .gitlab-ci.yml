@@ -1,6 +1,6 @@
 variables:
   DOCKER_TLS_CERTDIR: "/certs" #DO NOT REMOVE! This is required to allow docker to use TLS; this allows docker to find the necessary certs.
-  VER: v0.2.0
+  VER: v0.3.0
   IMG_COMMIT: $CI_REGISTRY_IMAGE/$CI_COMMIT_REF_NAME:$CI_COMMIT_SHORT_SHA
   IMG_VERS: $CI_REGISTRY_IMAGE/$CI_COMMIT_REF_NAME:$VER-$CI_COMMIT_SHORT_SHA
   POSTGRES_VERS: 15.1-bullseye
